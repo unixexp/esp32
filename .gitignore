@@ -1,0 +1,12 @@
+# Default ignored files
+__pycache__
+*.idea
+node_modules
+dist
+package-lock.json
+build
+*.DS_Store
+*.vscode
+*.o
+*.i
+*.s
