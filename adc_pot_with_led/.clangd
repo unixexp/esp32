@@ -1,0 +1,3 @@
+CompileFlags:
+  CompilationDatabase: /Users/unixexp/workspace/adc_pot_with_led/build
+  Remove: [-m*, -f*]
