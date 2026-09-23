@@ -2,7 +2,8 @@
 #include "a2dp_util.h"
 #include "esp_gap_bt_api.h"
 #include "i2s_util.h"
-#include "esp_a2dp_api.h"
+#include "freertos/FreeRTOS.h"
+#include "esp_a2dp_legacy_api.h"
 #include "esp_log.h"
 
 static const char *A2DP_LOG_TAG = "A2DP";
@@ -28,13 +29,12 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 	                 s_a2dp_conn_state_str[a2dp->conn_stat.state], bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
 	        if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
 	            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
-	            stop_i2s_channel();               
-	            close_i2s_channel();                             
+				close_i2s_channel();
 	        } else if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
 	            esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
-	            start_i2s_channel();                             
+				start_i2s_channel();
 	        } else if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTING) {
-	            open_i2s_channel();                              
+				open_i2s_channel();
 	        }                                                       
 	        break;                                                    
 	    }
@@ -56,11 +56,15 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 	}
 }
 
-static void a2dp_data_cb(const uint8_t *data, uint32_t len) {
-	
+static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
+    size_t bytes_written = 0;
+    if (s_i2s_cb.tx_chan != NULL && s_i2s_cb.chan_st == CHANNEL_STATUS_OPENED) {
+        i2s_channel_write(s_i2s_cb.tx_chan, data, len, &bytes_written, portMAX_DELAY);
+    }
 }
 
 void init_a2dp(void) {
 	esp_a2d_register_callback(&a2dp_state_cb);
+	esp_a2d_sink_register_data_callback(a2dp_pcm_data_cb);
 	esp_a2d_sink_init();
 }
