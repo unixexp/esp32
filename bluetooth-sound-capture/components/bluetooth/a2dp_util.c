@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "a2dp_util.h"
+#include "esp_err.h"
 #include "esp_gap_bt_api.h"
 #include "i2s_util.h"
 #include "freertos/FreeRTOS.h"
@@ -57,10 +58,7 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 }
 
 static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
-    size_t bytes_written = 0;
-    if (s_i2s_cb.tx_chan != NULL && s_i2s_cb.chan_st == CHANNEL_STATUS_OPENED) {
-        i2s_channel_write(s_i2s_cb.tx_chan, data, len, &bytes_written, portMAX_DELAY);
-    }
+    
 }
 
 void init_a2dp(void) {
