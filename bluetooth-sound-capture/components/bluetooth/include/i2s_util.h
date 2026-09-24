@@ -11,6 +11,13 @@
 #include "freertos/semphr.h"
 #include "freertos/ringbuf.h"
 
+/*
+	For 1 second of sound with sample rate 44100Hz with bit rate 16:
+	44100 Hz * 16 bit (2 bytes) * 2 channels = 44100 * 2 * 2 = 176KB
+	
+	It's too much, so we allocated buffer memory for 0.2s (it's enough):
+	176KB * 0.2 ~= 35KB
+*/
 #define RINGBUF_HIGHEST_WATER_LEVEL    (32 * 1024)
 #define RINGBUF_PREFETCH_WATER_LEVEL   (20 * 1024)
 
