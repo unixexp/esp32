@@ -5,6 +5,11 @@
 #include "i2s_util.h"
 #include "driver/i2s_std.h"
 #include "esp_a2dp_api.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/ringbuf.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "freertos/ringbuf.h"
 
 static const char *I2S_LOG_TAG = "I2S";
 
@@ -45,6 +50,21 @@ void open_i2s_channel(void) {
 void close_i2s_channel(void) {
 	stop_i2s_channel();
 	
+	if (s_i2s_cb.write_task_handle) {
+		vTaskDelete(s_i2s_cb.write_task_handle);
+		s_i2s_cb.write_task_handle = NULL;
+	}
+	
+	if (s_i2s_cb.ring_buf) {
+		vRingbufferDelete(s_i2s_cb.ring_buf);
+		s_i2s_cb.ring_buf = NULL;
+	}
+	
+	if (s_i2s_cb.write_semaphore) {
+		vSemaphoreDelete(s_i2s_cb.write_semaphore);
+		s_i2s_cb.write_semaphore = NULL;
+	}
+	
 	if (s_i2s_cb.chan_st == CHANNEL_STATUS_OPENED) {
 		ESP_ERROR_CHECK(i2s_del_channel(s_i2s_cb.tx_chan));
 		s_i2s_cb.chan_st = CHANNEL_STATUS_IDLE;
@@ -61,6 +81,31 @@ void start_i2s_channel(void) {
 	
 	ESP_ERROR_CHECK(i2s_channel_enable(s_i2s_cb.tx_chan));
 	ESP_LOGI(I2S_LOG_TAG, "state: enabled");
+	
+	ESP_LOGI(I2S_LOG_TAG, "ringbuffer data empty! mode changed: RINGBUFFER_MODE_PREFETCHING");
+    s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
+    if ((s_i2s_cb.write_semaphore == NULL) && (s_i2s_cb.write_semaphore = xSemaphoreCreateBinary()) == NULL) {
+        ESP_LOGE(I2S_LOG_TAG, "%s, Semaphore create failed", __func__);
+        
+		vSemaphoreDelete(s_i2s_cb.write_semaphore);
+		s_i2s_cb.write_semaphore = NULL;
+    }
+    if ((s_i2s_cb.ring_buf == NULL) && (s_i2s_cb.ring_buf = xRingbufferCreate(RINGBUF_HIGHEST_WATER_LEVEL, RINGBUF_TYPE_BYTEBUF)) == NULL) {
+        ESP_LOGE(I2S_LOG_TAG, "%s, ringbuffer create failed", __func__);
+        
+		vRingbufferDelete(s_i2s_cb.ring_buf);
+		s_i2s_cb.ring_buf = NULL;
+    }
+    if (s_i2s_cb.write_task_handle == NULL) {
+        if (xTaskCreate(i2s_task_handler, "BtI2STask", 4 * 1024, NULL,
+                        configMAX_PRIORITIES - 3, &s_i2s_cb.write_task_handle) != pdPASS) {
+            ESP_LOGE(I2S_LOG_TAG, "%s, Task create failed", __func__);
+            
+			vTaskDelete(s_i2s_cb.write_task_handle);
+			s_i2s_cb.write_task_handle = NULL;
+        }
+    }
+	
 	s_i2s_cb.chan_st = CHANNEL_STATUS_ENABLED;
 }
 
@@ -177,5 +222,13 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 		ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream configuration, codec type: %d", mcc->type);
 		return;
 	}
+}
+
+static void i2s_task_handler(void *args) {
+	
+}
+
+size_t i2s_data_output(const uint8_t *data, size_t size) {
+	return 0;
 }
 

@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include "a2dp_util.h"
-#include "esp_err.h"
 #include "esp_gap_bt_api.h"
 #include "i2s_util.h"
-#include "freertos/FreeRTOS.h"
 #include "esp_a2dp_legacy_api.h"
 #include "esp_log.h"
 
@@ -58,7 +56,11 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 }
 
 static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
-    
+    i2s_data_output(data, len);
+	
+	if (++s_pkt_cnt % 100 == 0) {
+        ESP_LOGI(A2DP_LOG_TAG, "Audio packet count: %"PRIu32, s_pkt_cnt);
+    }
 }
 
 void init_a2dp(void) {
