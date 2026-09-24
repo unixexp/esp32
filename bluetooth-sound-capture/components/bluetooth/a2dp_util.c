@@ -56,6 +56,16 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 }
 
 static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
+	
+	/*
+	Network level / IRQ callback
+	
+	Here, we receive decoded audio data (ex. SBC -> PCM) and
+	push here data to RingBuffer by i2s_data_output function
+	
+	We should'nt run heavy load operation here, just push data to the buffer
+	*/
+	
     i2s_data_output(data, len);
 	
 	if (++s_pkt_cnt % 100 == 0) {

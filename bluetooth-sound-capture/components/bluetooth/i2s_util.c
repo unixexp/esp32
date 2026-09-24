@@ -6,6 +6,7 @@
 #include "driver/i2s_std.h"
 #include "esp_a2dp_api.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/ringbuf.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -87,22 +88,30 @@ void start_i2s_channel(void) {
     if ((s_i2s_cb.write_semaphore == NULL) && (s_i2s_cb.write_semaphore = xSemaphoreCreateBinary()) == NULL) {
         ESP_LOGE(I2S_LOG_TAG, "%s, Semaphore create failed", __func__);
         
-		vSemaphoreDelete(s_i2s_cb.write_semaphore);
-		s_i2s_cb.write_semaphore = NULL;
+		if (s_i2s_cb.write_semaphore != NULL) {
+			vSemaphoreDelete(s_i2s_cb.write_semaphore);
+			s_i2s_cb.write_semaphore = NULL;	
+		}
+		
     }
     if ((s_i2s_cb.ring_buf == NULL) && (s_i2s_cb.ring_buf = xRingbufferCreate(RINGBUF_HIGHEST_WATER_LEVEL, RINGBUF_TYPE_BYTEBUF)) == NULL) {
         ESP_LOGE(I2S_LOG_TAG, "%s, ringbuffer create failed", __func__);
         
-		vRingbufferDelete(s_i2s_cb.ring_buf);
-		s_i2s_cb.ring_buf = NULL;
+		if (s_i2s_cb.ring_buf != NULL) {
+			vRingbufferDelete(s_i2s_cb.ring_buf);
+			s_i2s_cb.ring_buf = NULL;	
+		}
     }
     if (s_i2s_cb.write_task_handle == NULL) {
         if (xTaskCreate(i2s_task_handler, "BtI2STask", 4 * 1024, NULL,
                         configMAX_PRIORITIES - 3, &s_i2s_cb.write_task_handle) != pdPASS) {
             ESP_LOGE(I2S_LOG_TAG, "%s, Task create failed", __func__);
             
-			vTaskDelete(s_i2s_cb.write_task_handle);
-			s_i2s_cb.write_task_handle = NULL;
+			if (s_i2s_cb.write_task_handle != NULL) {
+				vTaskDelete(s_i2s_cb.write_task_handle);
+				s_i2s_cb.write_task_handle = NULL;	
+			}
+
         }
     }
 	
@@ -225,7 +234,14 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 }
 
 static void i2s_task_handler(void *args) {
+	/*
+	This task ran in separated thread, read data from the RingBuffer,
+	make some post-processing if we want and push processed data to the i2s bus
+	*/
 	
+	while(1){
+		vTaskDelay(pdMS_TO_TICKS(100));
+	}
 }
 
 size_t i2s_data_output(const uint8_t *data, size_t size) {
