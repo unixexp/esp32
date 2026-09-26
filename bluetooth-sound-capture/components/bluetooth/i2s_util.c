@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include "driver/i2s_common.h"
 #include "esp_err.h"
@@ -11,6 +12,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/ringbuf.h"
+#include "portmacro.h"
 
 static const char *I2S_LOG_TAG = "I2S";
 
@@ -239,12 +241,69 @@ static void i2s_task_handler(void *args) {
 	make some post-processing if we want and push processed data to the i2s bus
 	*/
 	
-	while(1){
-		vTaskDelay(pdMS_TO_TICKS(100));
+	uint8_t *data = NULL;
+	size_t item_size = 0;
+	
+	const size_t item_size_upto = 240 * 6;
+	size_t bytes_writen = 0;
+	
+	for (;;) {
+		if (pdTRUE == xSemaphoreTake(s_i2s_cb.write_semaphore, portMAX_DELAY)) {
+			for (;;) {
+				item_size = 0;
+				data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(20), item_size_upto);
+				if (item_size == 0) {
+					ESP_LOGW(I2S_LOG_TAG, "ringbuffer underflowed! mode changed: RINGBUFFER_MODE_PREFETCHING");
+					s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
+					break;
+				}
+				
+				// TODO: write data to i2s channel
+				
+				vRingbufferReturnItem(s_i2s_cb.ring_buf, (void *)data);
+			}
+		}
 	}
+
 }
 
 size_t i2s_data_output(const uint8_t *data, size_t size) {
-	return 0;
+
+	size_t item_size = 0;
+	BaseType_t done = pdFALSE;
+	
+	if (s_i2s_cb.ring_buf == NULL) {
+		return 0;
+	}
+	
+	if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_DROPPING) {
+		ESP_LOGW(I2S_LOG_TAG, "ringbuffer is full, drop this packet!");
+		vRingbufferGetInfo(s_i2s_cb.ring_buf, NULL, NULL, NULL, NULL, &item_size);
+		if (item_size <= RINGBUF_HIGHEST_WATER_LEVEL) {
+			ESP_LOGI(I2S_LOG_TAG, "ringbuffer data decreased! mode changed: RINGBUFFER_MODE_PROCESSING");
+			s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
+		}
+		return 0;
+	}
+	
+	done = xRingbufferSend(s_i2s_cb.ring_buf, (void *)data, size, (TickType_t)0);
+	if (!done) {
+		ESP_LOGW(I2S_LOG_TAG, "ringbuffer overflowed, ready to decrease data! mode changed: RINGBUFFER_MODE_DROPPING");
+		s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_DROPPING;
+	}
+	
+	if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
+		vRingbufferGetInfo(s_i2s_cb.ring_buf, NULL, NULL, NULL, NULL, &item_size);
+		if (item_size >= RINGBUF_PREFETCH_WATER_LEVEL) {
+			ESP_LOGI(I2S_LOG_TAG, "ringbuffer data increased! mode changed: RINGBUFFER_MODE_PROCESSING");
+			s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
+			if (pdFALSE == xSemaphoreGive(s_i2s_cb.write_semaphore)) {
+				ESP_LOGE(I2S_LOG_TAG, "write semaphore give failed!");
+			}
+		}
+	}
+	
+	return done ? size : 0;
 }
+
 
