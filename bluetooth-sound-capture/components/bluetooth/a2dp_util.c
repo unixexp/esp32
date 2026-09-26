@@ -68,9 +68,12 @@ static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
 	
     i2s_data_output(data, len);
 	
+	/*
+	DEBUG received packet count from Bluetooth A2DP
 	if (++s_pkt_cnt % 100 == 0) {
         ESP_LOGI(A2DP_LOG_TAG, "Audio packet count: %"PRIu32, s_pkt_cnt);
     }
+	*/
 }
 
 void init_a2dp(void) {

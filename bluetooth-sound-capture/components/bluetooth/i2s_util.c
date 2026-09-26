@@ -47,7 +47,7 @@ void open_i2s_channel(void) {
     ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &s_i2s_cb.tx_chan, NULL));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_i2s_cb.tx_chan, &std_cfg));
     s_i2s_cb.chan_st = CHANNEL_STATUS_OPENED;
-	ESP_LOGI(I2S_LOG_TAG, "state: opened");
+	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_OPENED");
 }
 
 void close_i2s_channel(void) {
@@ -73,7 +73,7 @@ void close_i2s_channel(void) {
 		s_i2s_cb.chan_st = CHANNEL_STATUS_IDLE;
 	}
 	memset(&s_i2s_cb, 0, sizeof(s_i2s_cb));
-	ESP_LOGI(I2S_LOG_TAG, "state: closed");
+	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_IDLE");
 }
 
 void start_i2s_channel(void) {
@@ -83,7 +83,7 @@ void start_i2s_channel(void) {
 	}
 	
 	ESP_ERROR_CHECK(i2s_channel_enable(s_i2s_cb.tx_chan));
-	ESP_LOGI(I2S_LOG_TAG, "state: enabled");
+	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_ENABLED");
 	
 	ESP_LOGI(I2S_LOG_TAG, "ringbuffer data empty! mode changed: RINGBUFFER_MODE_PREFETCHING");
     s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
@@ -124,7 +124,7 @@ void stop_i2s_channel(void) {
 	if (s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
 		ESP_ERROR_CHECK(i2s_channel_disable(s_i2s_cb.tx_chan));
 		s_i2s_cb.chan_st = CHANNEL_STATUS_OPENED;
-		ESP_LOGI(I2S_LOG_TAG, "state: opened");
+		ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_OPENED");
 	}
 }
 
@@ -258,7 +258,10 @@ static void i2s_task_handler(void *args) {
 					break;
 				}
 				
-				// TODO: write data to i2s channel
+				if (s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
+					i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
+					// ESP_LOGI(I2S_LOG_TAG, "%d bytes writen", bytes_writen);
+				}
 				
 				vRingbufferReturnItem(s_i2s_cb.ring_buf, (void *)data);
 			}
