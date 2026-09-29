@@ -12,14 +12,12 @@
 #include "freertos/ringbuf.h"
 
 /*
-	For 1 second of sound with sample rate 44100Hz with bit rate 16:
-	44100 Hz * 16 bit (2 bytes) * 2 channels = 44100 * 2 * 2 = 176KB
-	
-	It's too much, so we allocated buffer memory for 0.2s (it's enough):
-	176KB * 0.2 ~= 35KB
+	One sample (16-bit stereo PCM) = 4 bytes
+	Let's take highest buffer size as 64KB: 65536 / 4 = 16384 samples.
+	Time of sound will calculates by formula: 16384 samples / 44100 =~ 371 ms
 */
-#define RINGBUF_HIGHEST_WATER_LEVEL    (32 * 1024)
-#define RINGBUF_PREFETCH_WATER_LEVEL   (20 * 1024)
+#define RINGBUF_HIGHEST_WATER_LEVEL    (64 * 1024)
+#define RINGBUF_PREFETCH_WATER_LEVEL   (4096 * 10)
 
 typedef enum {
     RINGBUFFER_MODE_PROCESSING,    /* ringbuffer is buffering incoming audio data */

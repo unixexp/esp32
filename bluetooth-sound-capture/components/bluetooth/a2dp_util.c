@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include "a2dp_util.h"
 #include "esp_gap_bt_api.h"
@@ -67,6 +68,12 @@ static void a2dp_pcm_data_cb(const uint8_t *data, uint32_t len) {
 	*/
 	
     i2s_data_output(data, len);
+	
+	static uint32_t pkt_log_idx = 0;
+	if (pkt_log_idx < 100) {
+		pkt_log_idx++;
+		ESP_LOGI(A2DP_LOG_TAG, "[Пакет #%lu] Прилетело байт: %lu", pkt_log_idx, len);
+	}
 	
 	/*
 	DEBUG received packet count from Bluetooth A2DP
