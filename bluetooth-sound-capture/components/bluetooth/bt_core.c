@@ -9,6 +9,10 @@
 #include "esp_log.h"
 #include "bt_core.h"
 
+#define MY_BT_COD_MINOR_AV_HEADPHONES       2
+#define MY_BT_COD_MINOR_AV_LOUDSPEAKER      5
+#define MY_BT_COD_MINOR_AV_HIFI_AUDIO      10
+
 static const char *BT_CORE_TAG = "BT_CORE";
 static bool SSP_ENABLED = false;
 
@@ -71,6 +75,12 @@ void init_bluedroid_host(const char device_name[], bool ssp, const uint8_t *pin_
 			ESP_LOGE(BT_CORE_TAG, "Pairing security mode: pin (%.*s)", pin_len, (char*)pin_ptr);
 		}
 	}
+	
+	esp_bt_cod_t cod;
+	cod.service = ESP_BT_COD_SRVC_AUDIO | ESP_BT_COD_SRVC_RENDERING;
+	cod.major = ESP_BT_COD_MAJOR_DEV_AV;
+	cod.minor = MY_BT_COD_MINOR_AV_HEADPHONES;
+	esp_bt_gap_set_cod(cod, ESP_BT_SET_COD_ALL);
 	
 	esp_bt_gap_set_device_name(device_name);
 	esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);

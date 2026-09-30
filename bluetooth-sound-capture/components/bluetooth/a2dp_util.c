@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "a2dp_util.h"
+#include "esp_bt_defs.h"
 #include "esp_gap_bt_api.h"
 #include "i2s_util.h"
 #include "esp_a2dp_legacy_api.h"

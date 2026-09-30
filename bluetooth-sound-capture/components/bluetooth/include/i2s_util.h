@@ -16,7 +16,7 @@
 	Let's take highest buffer size as 64KB: 65536 / 4 = 16384 samples.
 	Time of sound will calculates by formula: 16384 samples / 44100 =~ 371 ms
 */
-#define RINGBUF_HIGHEST_WATER_LEVEL    (64 * 1024)
+#define RINGBUF_HIGHEST_WATER_LEVEL    (80 * 1024)
 #define RINGBUF_PREFETCH_WATER_LEVEL   (4096 * 10)
 
 typedef enum {

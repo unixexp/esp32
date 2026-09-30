@@ -23,7 +23,7 @@ static uint32_t s_underflow_cnt = 0;
 // LRCK
 #define I2S_WS_PIN      GPIO_NUM_25
 // DIN
-#define I2S_DOUT_PIN    GPIO_NUM_22
+#define I2S_DOUT_PIN    GPIO_NUM_27
 
 void open_i2s_channel(void) {
 	if (s_i2s_cb.chan_st != CHANNEL_STATUS_IDLE) {
@@ -32,14 +32,16 @@ void open_i2s_channel(void) {
     }
 	i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
+	chan_cfg.dma_desc_num = 10;
+	chan_cfg.dma_frame_num = 512;
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
         .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
-            .bclk = GPIO_NUM_26,
-            .ws = GPIO_NUM_25,
-            .dout = GPIO_NUM_22,
+            .bclk = I2S_BCLK_PIN,
+            .ws = I2S_WS_PIN,
+            .dout = I2S_DOUT_PIN,
             .din = I2S_GPIO_UNUSED,
             .invert_flags = {
                 .mclk_inv = false,
@@ -110,8 +112,7 @@ void start_i2s_channel(void) {
 		}
     }
     if (s_i2s_cb.write_task_handle == NULL) {
-        if (xTaskCreatePinnedToCore(i2s_task_handler, "BtI2STask", 4 * 1024, NULL,
-                        configMAX_PRIORITIES - 3, &s_i2s_cb.write_task_handle, 1) != pdPASS) {
+        if (xTaskCreatePinnedToCore(i2s_task_handler, "BtI2STask", 4 * 1024, NULL, 5, &s_i2s_cb.write_task_handle, 1) != pdPASS) {
             ESP_LOGE(I2S_LOG_TAG, "%s, Task create failed", __func__);
             
 			if (s_i2s_cb.write_task_handle != NULL) {
@@ -137,47 +138,7 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 	int sample_rate = 0;
 	int ch_count = 0;
 	
-	if (mcc->type == ESP_A2D_MCT_SBC) {
-		ESP_LOGI(I2S_LOG_TAG, "A2DP audio stream configuration, codec type: SBC (%d)", mcc->type);
-		// SBC Codec
-		if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_16K) {
-			sample_rate = 16000;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_32K) {
-			sample_rate = 32000;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_44K) {
-			sample_rate = 44100;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_48K) {
-			sample_rate = 48000;
-		} else {
-			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream sample rate: %d", mcc->cie.sbc_info.samp_freq);
-			return;
-		}
-		
-		if (mcc->cie.sbc_info.ch_mode & ESP_A2D_SBC_CIE_CH_MODE_MONO) {
-            ch_count = 1;
-        } else if (mcc->cie.sbc_info.ch_mode & (ESP_A2D_SBC_CIE_CH_MODE_STEREO |
-												ESP_A2D_SBC_CIE_CH_MODE_JOINT_STEREO |
-												ESP_A2D_SBC_CIE_CH_MODE_DUAL_CHANNEL)) {
-			ch_count = 2;
-		} else {
-			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream channel mode: %d", mcc->cie.sbc_info.ch_mode);
-			return;
-		}
-
-        i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate);
-        i2s_std_slot_config_t slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, ch_count);
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.tx_chan, &clk_cfg));
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.tx_chan, &slot_cfg));
-        ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-%d-%d",
-                 mcc->cie.sbc_info.samp_freq,
-                 mcc->cie.sbc_info.ch_mode,
-                 mcc->cie.sbc_info.block_len,
-                 mcc->cie.sbc_info.num_subbands,
-                 mcc->cie.sbc_info.alloc_mthd,
-                 mcc->cie.sbc_info.min_bitpool,
-                 mcc->cie.sbc_info.max_bitpool);
-		ESP_LOGI(I2S_LOG_TAG, "Audio player configured, sample rate: %d, %d channels", sample_rate, ch_count);
-	} else if (mcc->type == ESP_A2D_MCT_M24) {
+	if (mcc->type == ESP_A2D_MCT_M24) {
 		ESP_LOGI(I2S_LOG_TAG, "A2DP audio stream configuration, codec type: AAC (%d)", mcc->type);
 		// AAC Codec
 		if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_8K) {
@@ -234,6 +195,46 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
                  mcc->cie.m24_info.br2,
                  mcc->cie.m24_info.br3);
         ESP_LOGI(I2S_LOG_TAG, "Audio player configured, sample rate: %d, %d channels", sample_rate, ch_count);
+	} else if (mcc->type == ESP_A2D_MCT_SBC) {
+		ESP_LOGI(I2S_LOG_TAG, "A2DP audio stream configuration, codec type: SBC (%d)", mcc->type);
+		// SBC Codec
+		if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_16K) {
+			sample_rate = 16000;
+		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_32K) {
+			sample_rate = 32000;
+		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_44K) {
+			sample_rate = 44100;
+		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_48K) {
+			sample_rate = 48000;
+		} else {
+			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream sample rate: %d", mcc->cie.sbc_info.samp_freq);
+			return;
+		}
+		
+		if (mcc->cie.sbc_info.ch_mode & ESP_A2D_SBC_CIE_CH_MODE_MONO) {
+            ch_count = 1;
+        } else if (mcc->cie.sbc_info.ch_mode & (ESP_A2D_SBC_CIE_CH_MODE_STEREO |
+												ESP_A2D_SBC_CIE_CH_MODE_JOINT_STEREO |
+												ESP_A2D_SBC_CIE_CH_MODE_DUAL_CHANNEL)) {
+			ch_count = 2;
+		} else {
+			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream channel mode: %d", mcc->cie.sbc_info.ch_mode);
+			return;
+		}
+
+        i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate);
+        i2s_std_slot_config_t slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, ch_count);
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.tx_chan, &clk_cfg));
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.tx_chan, &slot_cfg));
+        ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-%d-%d",
+                 mcc->cie.sbc_info.samp_freq,
+                 mcc->cie.sbc_info.ch_mode,
+                 mcc->cie.sbc_info.block_len,
+                 mcc->cie.sbc_info.num_subbands,
+                 mcc->cie.sbc_info.alloc_mthd,
+                 mcc->cie.sbc_info.min_bitpool,
+                 mcc->cie.sbc_info.max_bitpool);
+		ESP_LOGI(I2S_LOG_TAG, "Audio player configured, sample rate: %d, %d channels", sample_rate, ch_count);
 	} else {
 		ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream configuration, codec type: %d", mcc->type);
 		return;
@@ -249,14 +250,22 @@ static void i2s_task_handler(void *args) {
 	
 	for (;;) {
 		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
-			xSemaphoreTake(s_i2s_cb.write_semaphore, portMAX_DELAY);
+			size_t free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
+            size_t filled_bytes = RINGBUF_HIGHEST_WATER_LEVEL - free_size;
+            
+            if (filled_bytes < RINGBUF_PREFETCH_WATER_LEVEL) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            } else {
+                s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
+            }
 		}
 		
 		item_size = 0;
-		data = (uint8_t *)xRingbufferReceive(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(15));
+		data = (uint8_t *)xRingbufferReceive(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400));
 		
-		if (data != NULL && item_size > 0) {
-			if (s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
+		if (data != NULL) {
+			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
 				size_t bytes_writen = 0;
 				
 				// Use pre-processing here...(volume control, filtering etc...)
@@ -270,7 +279,7 @@ static void i2s_task_handler(void *args) {
 				
 				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
-				vTaskDelay(pdMS_TO_TICKS(2));
+				vTaskDelay(pdMS_TO_TICKS(10));
 			}
 			
 			vRingbufferReturnItem(s_i2s_cb.ring_buf, (void *)data);
@@ -298,21 +307,8 @@ size_t i2s_data_output(const uint8_t *data, size_t size) {
     }
 	
 	BaseType_t done = xRingbufferSend(s_i2s_cb.ring_buf, (void *)data, size, (TickType_t)0);
-	if (!done) return 0;
 	
-	if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
-		free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
-		size_t filled_bytes = RINGBUF_HIGHEST_WATER_LEVEL - free_size;
-		
-		if (filled_bytes >= RINGBUF_PREFETCH_WATER_LEVEL) {
-			ESP_LOGI(I2S_LOG_TAG, "Ringbuffer data increased to RINGBUF_PREFETCH_WATER_LEVEL level. Mode changed to: RINGBUFFER_MODE_PROCESSING");
-			s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
-
-			xSemaphoreGive(s_i2s_cb.write_semaphore);
-		}
-	}
-	
-	return size;
+	return done ? size : 0;
 }
 
 
