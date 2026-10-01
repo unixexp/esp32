@@ -14,9 +14,6 @@
 #include "freertos/ringbuf.h"
 #include "portmacro.h"
 
-static const char *I2S_LOG_TAG = "I2S";
-static uint32_t s_underflow_cnt = 0;
-
 // Connection to PCM5102 board pinout
 // BCK
 #define I2S_BCLK_PIN    GPIO_NUM_26
@@ -24,6 +21,64 @@ static uint32_t s_underflow_cnt = 0;
 #define I2S_WS_PIN      GPIO_NUM_25
 // DIN
 #define I2S_DOUT_PIN    GPIO_NUM_27
+
+static const char *I2S_LOG_TAG = "I2S";
+static uint32_t s_underflow_cnt = 0;
+static audio_sink_srv_i2s_cb_t s_i2s_cb;
+
+static void i2s_task_handler(void *args) {
+
+	uint8_t *data = NULL;
+	size_t item_size = 0;
+	
+	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
+	
+	for (;;) {
+		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
+			size_t free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
+            size_t filled_bytes = RINGBUF_HIGHEST_WATER_LEVEL - free_size;
+            
+            if (filled_bytes < RINGBUF_PREFETCH_WATER_LEVEL) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            } else {
+                s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
+            }
+		}
+		
+		item_size = 0;
+		data = (uint8_t *)xRingbufferReceive(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400));
+		
+		if (data != NULL) {
+			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
+				size_t bytes_writen = 0;
+				
+				// Use pre-processing here...(volume control, filtering etc...)
+				/*
+				int16_t *samples = (int16_t *)data;
+                int num_samples = item_size / sizeof(int16_t);
+                for (int i = 0; i < num_samples; i++) {
+                    samples[i] = (int16_t)(samples[i] * 0.70f);
+                }
+				*/
+				
+				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
+			} else {
+				vTaskDelay(pdMS_TO_TICKS(10));
+			}
+			
+			vRingbufferReturnItem(s_i2s_cb.ring_buf, (void *)data);
+		} else {
+			s_underflow_cnt++;
+			size_t bytes_free = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
+			ESP_LOGW(I2S_LOG_TAG, "[#%lu] Buffer is empty! Input data late. Free bytes in buffer: %d bytes",
+				s_underflow_cnt, bytes_free);
+
+			s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
+		}
+	}
+
+}
 
 void open_i2s_channel(void) {
 	if (s_i2s_cb.chan_st != CHANNEL_STATUS_IDLE) {
@@ -211,60 +266,6 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 		ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream configuration, codec type: %d", mcc->type);
 		return;
 	}
-}
-
-static void i2s_task_handler(void *args) {
-
-	uint8_t *data = NULL;
-	size_t item_size = 0;
-	
-	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
-	
-	for (;;) {
-		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
-			size_t free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
-            size_t filled_bytes = RINGBUF_HIGHEST_WATER_LEVEL - free_size;
-            
-            if (filled_bytes < RINGBUF_PREFETCH_WATER_LEVEL) {
-                vTaskDelay(pdMS_TO_TICKS(10));
-                continue;
-            } else {
-                s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PROCESSING;
-            }
-		}
-		
-		item_size = 0;
-		data = (uint8_t *)xRingbufferReceive(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400));
-		
-		if (data != NULL) {
-			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
-				size_t bytes_writen = 0;
-				
-				// Use pre-processing here...(volume control, filtering etc...)
-				/*
-				int16_t *samples = (int16_t *)data;
-                int num_samples = item_size / sizeof(int16_t);
-                for (int i = 0; i < num_samples; i++) {
-                    samples[i] = (int16_t)(samples[i] * 0.70f);
-                }
-				*/
-				
-				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
-			} else {
-				vTaskDelay(pdMS_TO_TICKS(10));
-			}
-			
-			vRingbufferReturnItem(s_i2s_cb.ring_buf, (void *)data);
-		} else {
-			s_underflow_cnt++;
-			size_t bytes_free = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
-			ESP_LOGW(I2S_LOG_TAG, "[#%lu] Buffer is empty! Input data late. Free bytes in buffer: %d bytes",
-				s_underflow_cnt, bytes_free);
-
-			s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
-		}
-	}
-
 }
 
 size_t i2s_data_output(const uint8_t *data, size_t size) {

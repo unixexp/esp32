@@ -5,6 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-void init_dsp_engine(void);
+void init_fir_processor(void);
 
 #endif /* _FIR_H_ */

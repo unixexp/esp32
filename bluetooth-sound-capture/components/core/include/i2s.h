@@ -40,14 +40,11 @@ typedef struct {
 	uint16_t ring_buf_mode;
 } audio_sink_srv_i2s_cb_t;
 
-static audio_sink_srv_i2s_cb_t s_i2s_cb;
-
 void open_i2s_channel(void);
 void close_i2s_channel(void);
 void start_i2s_channel(void);
 void stop_i2s_channel(void);
 void update_i2s_channel_config(esp_a2d_mcc_t *mcc);
-static void i2s_task_handler(void *args);
 size_t i2s_data_output(const uint8_t *data, size_t size);
 
 #endif /* _I2S_H_ */
