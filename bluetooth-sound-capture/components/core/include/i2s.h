@@ -1,5 +1,5 @@
-#ifndef _I2S_UTIL_H_
-#define _I2S_UTIL_H_
+#ifndef _I2S_H_
+#define _I2S_H_
 
 #include <stdint.h>
 #include <stdio.h>
@@ -50,4 +50,4 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc);
 static void i2s_task_handler(void *args);
 size_t i2s_data_output(const uint8_t *data, size_t size);
 
-#endif /* _I2S_UTIL_H_ */
+#endif /* _I2S_H_ */

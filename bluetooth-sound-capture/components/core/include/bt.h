@@ -1,5 +1,5 @@
-#ifndef _BT_CORE_H_
-#define _BT_CORE_H_
+#ifndef _BT_H_
+#define _BT_H_
 
 #include <stdio.h>
 #include "esp_bt_device.h"
@@ -11,4 +11,4 @@ void init_bluedroid_host(const char device_name[], bool ssp, const uint8_t *pin_
 static void bluedroid_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param);
 static void bluedroid_dev_callback(esp_bt_dev_cb_event_t event, esp_bt_dev_cb_param_t *param);
 
-#endif /* _BT_CORE_H_ */
+#endif /* _BT_H_ */

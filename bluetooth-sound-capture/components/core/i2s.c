@@ -1,9 +1,9 @@
 #include <stdint.h>
 #include <stdio.h>
+#include "i2s.h"
 #include "driver/i2s_common.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "i2s_util.h"
 #include "driver/i2s_std.h"
 #include "esp_a2dp_api.h"
 #include "freertos/FreeRTOS.h"
@@ -141,30 +141,8 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 	if (mcc->type == ESP_A2D_MCT_M24) {
 		ESP_LOGI(I2S_LOG_TAG, "A2DP audio stream configuration, codec type: AAC (%d)", mcc->type);
 		// AAC Codec
-		if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_8K) {
-			sample_rate = 8000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_11K) {
-			sample_rate = 11025;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_12K) {
-			sample_rate = 12000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_16K) {
-			sample_rate = 16000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_22K) {
-			sample_rate = 22050;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_24K) {
-			sample_rate = 24000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_32K) {
-			sample_rate = 32000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_44K) {
+		if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF1_44K) {
 			sample_rate = 44100;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF2_48K) {
-			sample_rate = 48000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF2_64K) {
-			sample_rate = 64000;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF2_88K) {
-			sample_rate = 88200;
-		} else if (mcc->cie.m24_info.samp_freq1 & ESP_A2D_M24_CIE_SF2_96K) {
-			sample_rate = 96000;
 		} else {
 			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream sample rate: %d", mcc->cie.m24_info.samp_freq1);
 			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream sample rate2: %d", mcc->cie.m24_info.samp_freq2);
@@ -198,14 +176,8 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 	} else if (mcc->type == ESP_A2D_MCT_SBC) {
 		ESP_LOGI(I2S_LOG_TAG, "A2DP audio stream configuration, codec type: SBC (%d)", mcc->type);
 		// SBC Codec
-		if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_16K) {
-			sample_rate = 16000;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_32K) {
-			sample_rate = 32000;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_44K) {
+		if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_44K) {
 			sample_rate = 44100;
-		} else if (mcc->cie.sbc_info.samp_freq & ESP_A2D_SBC_CIE_SF_48K) {
-			sample_rate = 48000;
 		} else {
 			ESP_LOGE(I2S_LOG_TAG, "Unsupported A2DP audio stream sample rate: %d", mcc->cie.sbc_info.samp_freq);
 			return;

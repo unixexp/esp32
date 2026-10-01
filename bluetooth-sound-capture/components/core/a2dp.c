@@ -1,11 +1,11 @@
 #include <stdint.h>
 #include <stdio.h>
-#include "a2dp_util.h"
+#include "a2dp.h"
 #include "esp_bt_defs.h"
 #include "esp_gap_bt_api.h"
-#include "i2s_util.h"
 #include "esp_a2dp_legacy_api.h"
 #include "esp_log.h"
+#include "i2s.h"
 
 static const char *A2DP_LOG_TAG = "A2DP";
 
