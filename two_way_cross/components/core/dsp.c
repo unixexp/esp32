@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include "dsp.h"
+#include "dsps_fir.h"
 #include "esp_dsp.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -37,6 +38,13 @@ void dsp_init_fir_lpf(u_int8_t step) {
 	}
 }
 
+void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
+	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
+		return;
+	}
+	memcpy(data_out, data_in, size_bytes);
+}
+
 void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 	if (!fir_lpf_initialized) return;
 	if (size_bytes == 0) return;
@@ -61,7 +69,8 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 			in_lpf_r[i] = (float)samples_in[idx + 1] / 32768.0f;
 		}
 		
-		// TODO: accept filter
+		// Accept filter
+		dsps_fir_f32(&fir_lpf_l, in_lpf_l, out_lpf_l, chunk_samples);
 		
 		// Interleaving to stereo pairs and record to output data
 		for (size_t i = 0; i < chunk_samples; i++) {
