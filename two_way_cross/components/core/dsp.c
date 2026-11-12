@@ -37,14 +37,15 @@ void dsp_init_fir_lpf(u_int8_t step) {
 	}
 }
 
-void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size) {
+void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 	if (!fir_lpf_initialized) return;
-	if (item_size == 0) return;
+	if (size_bytes == 0) return;
 	
 	const int16_t *samples_in = (int16_t *)data_in;
 	int16_t *samples_out = (int16_t *)data_out;
 	
-	size_t total_samples = item_size / sizeof(int16_t);
+	// Summary count of stereo-pairs (one channel - 2 byte, one pair - 4 byte)
+	size_t total_samples = size_bytes / (sizeof(int16_t) * 2);
 	size_t processed_samples = 0;
 	
 	while (processed_samples < total_samples) {
@@ -53,18 +54,45 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size) {
 			chunk_samples = BLOCK_SAMPLES;
 		}
 		
+		// Deinterleaving input data of stereo pairs
+		for (size_t i = 0; i < chunk_samples; i++) {
+			size_t idx = (processed_samples + i) * 2;
+			in_lpf_l[i] = (float)samples_in[idx] / 32768.0f;
+			in_lpf_r[i] = (float)samples_in[idx + 1] / 32768.0f;
+		}
+		
+		// TODO: accept filter
+		
+		// Interleaving to stereo pairs and record to output data
+		for (size_t i = 0; i < chunk_samples; i++) {
+			float l = out_lpf_l[i] * 32768.0f;
+			float r = out_lpf_r[i] * 32768.0f;
+			
+			// int16 overload protection
+			if (l > 32767.0f) {
+				l = 32767.0f;
+			} else if (l < -32768.0f) {
+				l = -32768.0f;
+			}
+
+            if (r > 32767.0f) {
+				r = 32767.0f;
+			} else if (r < -32768.0f) {
+				r = -32768.0f;
+			}
+			
+			// Record to output data
+			size_t idx = (processed_samples + i) * 2;
+			samples_out[idx] = (int16_t)l;
+			samples_out[idx + 1] = (int16_t)r;
+		}
+		
 		/*
 		ESP_LOGI(DSP_LOG_TAG, "item_size: %d", item_size);
 		ESP_LOGI(DSP_LOG_TAG, "total_samples: %d", total_samples);
 		ESP_LOGI(DSP_LOG_TAG, "processed_samples: %d", processed_samples);
 		ESP_LOGI(DSP_LOG_TAG, "chunk_samples: %d", chunk_samples);
 		ESP_LOGI(DSP_LOG_TAG, "-------------------------------");
-		
-		Ex:
-		I (77218) DSP: item_size: 4096
-		I (77218) DSP: total_samples: 2048
-		I (77218) DSP: processed_samples: 0
-		I (77228) DSP: chunk_samples: 512 (> 2048)
 		*/
 		
 		processed_samples += chunk_samples;

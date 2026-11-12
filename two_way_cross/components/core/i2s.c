@@ -27,7 +27,7 @@ static const char *I2S_LOG_TAG = "I2S";
 static uint32_t s_underflow_cnt = 0;
 static audio_sink_srv_i2s_cb_t s_i2s_cb;
 
-static uint8_t buf_out_lpf[4096];
+static uint8_t data_out_lpf[4096];
 
 static void i2s_task_handler(void *args) {
 
@@ -59,8 +59,8 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
-				dsp_cross_fir_lpf(data, buf_out_lpf, item_size);
-				// dsp_adjust_volume(data, item_size, 0.60f);
+				dsp_cross_fir_lpf(data, data_out_lpf, item_size);
+				dsp_adjust_volume(data, item_size, 0.40f);
 
 				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
