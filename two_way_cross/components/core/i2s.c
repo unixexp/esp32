@@ -13,6 +13,7 @@
 #include "freertos/semphr.h"
 #include "freertos/ringbuf.h"
 #include "portmacro.h"
+#include "dsp.h"
 
 // Connection to PCM5102 board pinout
 // BCK
@@ -25,6 +26,8 @@
 static const char *I2S_LOG_TAG = "I2S";
 static uint32_t s_underflow_cnt = 0;
 static audio_sink_srv_i2s_cb_t s_i2s_cb;
+
+static uint8_t buf_out_lpf[4096];
 
 static void i2s_task_handler(void *args) {
 
@@ -47,19 +50,16 @@ static void i2s_task_handler(void *args) {
 		}
 		
 		item_size = 0;
-		data = (uint8_t *)xRingbufferReceive(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400));
+		data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
 		
 		if (data != NULL) {
 			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
 				size_t bytes_writen = 0;
 				
-				// Adjust volume
-				int16_t *samples = (int16_t *)data;
-                int num_samples = item_size / sizeof(int16_t);
-                for (int i = 0; i < num_samples; i++) {
-                    samples[i] = (int16_t)(samples[i] * 0.60f);
-                }
-				
+				// Audio processing
+				dsp_cross_fir_lpf(data, buf_out_lpf, item_size, 4);
+				// dsp_adjust_volume(data, item_size, 0.60f);
+
 				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
@@ -266,11 +266,17 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 	}
 }
 
-size_t i2s_data_output(const uint8_t *data, size_t size) {
+size_t output_i2s_data(const uint8_t *data, size_t size) {
 	
 	if (s_i2s_cb.ring_buf == NULL) {
 		return 0;
 	}
+	
+	// We guarantee exact multiples to 4 bytes (1 stereo-pair = 4 bytes)
+    size &= ~3; 
+    if (size == 0) {
+        return 0;
+    }
 	
 	size_t free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
     if (free_size < size) {

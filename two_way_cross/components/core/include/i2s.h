@@ -18,6 +18,7 @@
 */
 #define RINGBUF_HIGHEST_WATER_LEVEL    (80 * 1024)
 #define RINGBUF_PREFETCH_WATER_LEVEL   (4096 * 10)
+#define READ_CHUNK_SIZE 4096
 
 typedef enum {
     RINGBUFFER_MODE_PROCESSING,    /* ringbuffer is buffering incoming audio data */
@@ -45,6 +46,6 @@ void close_i2s_channel(void);
 void start_i2s_channel(void);
 void stop_i2s_channel(void);
 void update_i2s_channel_config(esp_a2d_mcc_t *mcc);
-size_t i2s_data_output(const uint8_t *data, size_t size);
+size_t output_i2s_data(const uint8_t *data, size_t size);
 
 #endif /* _I2S_H_ */
