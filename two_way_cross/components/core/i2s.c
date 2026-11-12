@@ -53,14 +53,12 @@ static void i2s_task_handler(void *args) {
 			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
 				size_t bytes_writen = 0;
 				
-				// Use pre-processing here...(volume control, filtering etc...)
-				/*
+				// Adjust volume
 				int16_t *samples = (int16_t *)data;
                 int num_samples = item_size / sizeof(int16_t);
                 for (int i = 0; i < num_samples; i++) {
-                    samples[i] = (int16_t)(samples[i] * 0.70f);
+                    samples[i] = (int16_t)(samples[i] * 0.60f);
                 }
-				*/
 				
 				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
