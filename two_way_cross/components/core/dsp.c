@@ -1,20 +1,21 @@
 #include <stdio.h>
+#include <sys/types.h>
 #include "dsp.h"
 #include "esp_dsp.h"
 #include "esp_err.h"
+#include "esp_log.h"
 #include "fir_tables.h"
 
 static const char *DSP_LOG_TAG = "DSP";
 
 #define BLOCK_SAMPLES 512
-static float fir_coeffs_lpf[FIR_TAPS];
+static float active_lpf_coeffs[FIR_TAPS];
 static float fir_delay_lpf_l[FIR_TAPS];
-static float fir_delat_lpf_r[FIR_TAPS];
+static float fir_delay_lpf_r[FIR_TAPS];
 static fir_f32_t fir_lpf_l;
 static fir_f32_t fir_lpf_r;
 static float in_lpf_l[BLOCK_SAMPLES], out_lpf_l[BLOCK_SAMPLES];
 static float in_lpf_r[BLOCK_SAMPLES], out_lpf_r[BLOCK_SAMPLES];
-
 static bool fir_lpf_initialized = false;
 
 // value from 0.0 to 1.0
@@ -26,14 +27,18 @@ void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
     }
 }
 
-static void dsp_init_fir_lpf(void) {
-	ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_l, fir_coeffs_lpf, fir_delay_lpf_l, FIR_TAPS));
-	ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_r, fir_coeffs_lpf, fir_delat_lpf_r, FIR_TAPS));
-	fir_lpf_initialized = true;
-	ESP_LOGI(DSP_LOG_TAG, "DSP Fir Low pass instances initialized.");
+void dsp_init_fir_lpf(u_int8_t step) {
+	if (!fir_lpf_initialized) {
+		memcpy(active_lpf_coeffs, fir_lpf_table[step], sizeof(float) * FIR_TAPS);
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_l, active_lpf_coeffs, fir_delay_lpf_l, FIR_TAPS));
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_r, active_lpf_coeffs, fir_delay_lpf_r, FIR_TAPS));
+		fir_lpf_initialized = true;
+		ESP_LOGI(DSP_LOG_TAG, "DSP FIR Low Pass instance initialized.");	
+	}
 }
 
-void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size, int current_step) {
+void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size) {
+	if (!fir_lpf_initialized) return;
 	if (item_size == 0) return;
 	
 	const int16_t *samples_in = (int16_t *)data_in;
@@ -64,10 +69,6 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size, int curr
 		
 		processed_samples += chunk_samples;
 	}
-	
-	// if (!fir_lpf_initialized) {
-	//	dsp_init_fir_lpf();
-	//}
 }
 
 

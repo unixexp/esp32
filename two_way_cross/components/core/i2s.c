@@ -36,6 +36,8 @@ static void i2s_task_handler(void *args) {
 	
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
 	
+	dsp_init_fir_lpf(4);
+	
 	for (;;) {
 		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
 			size_t free_size = xRingbufferGetCurFreeSize(s_i2s_cb.ring_buf);
@@ -57,7 +59,7 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
-				dsp_cross_fir_lpf(data, buf_out_lpf, item_size, 4);
+				dsp_cross_fir_lpf(data, buf_out_lpf, item_size);
 				// dsp_adjust_volume(data, item_size, 0.60f);
 
 				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
