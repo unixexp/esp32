@@ -59,10 +59,10 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
-				dsp_cross_fir_lpf(data, data_out_lpf, item_size);
-				dsp_adjust_volume(data_out_lpf, item_size, 0.40f);
+				// dsp_cross_fir_lpf(data, data_out_lpf, item_size);
+				dsp_adjust_volume(data, item_size, 0.40f);
 
-				i2s_channel_write(s_i2s_cb.tx_chan, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.tx_chan, data, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}

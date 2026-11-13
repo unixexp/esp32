@@ -71,6 +71,7 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 		
 		// Accept filter
 		dsps_fir_f32(&fir_lpf_l, in_lpf_l, out_lpf_l, chunk_samples);
+		dsps_fir_f32(&fir_lpf_r, in_lpf_r, out_lpf_r, chunk_samples);
 		
 		// Interleaving to stereo pairs and record to output data
 		for (size_t i = 0; i < chunk_samples; i++) {
