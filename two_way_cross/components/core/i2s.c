@@ -20,7 +20,7 @@ static uint32_t s_underflow_cnt = 0;
 
 static audio_sink_srv_i2s_cb_t s_i2s_cb;
 static i2s_channel_t chan0 = {
-	.num = 0,
+	.num = 1,
 	.tx_handler = NULL,
 	.state = CHANNEL_STATUS_IDLE,
 	.pinout = I2S_CH0_PINOUT_PCM5102
@@ -58,8 +58,8 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
-				// dsp_cross_fir_lpf(data, data_out_lpf, item_size);
-				dsp_just_copy(data, data_out_lpf, item_size);
+				dsp_cross_fir_lpf(data, data_out_lpf, item_size);
+				// dsp_just_copy(data, data_out_lpf, item_size);
 				dsp_adjust_volume(data_out_lpf, item_size, 0.40f);
 
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);

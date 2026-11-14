@@ -35,7 +35,7 @@ void dsp_init_fir_lpf(u_int8_t idx) {
 	} else if ((size_t)idx >= size) {
 		ESP_LOGE(DSP_LOG_TAG, "DSP FIR Low Pass instance not initialized. Coefficient index outbound.");
 	} else if (!fir_lpf_initialized) {
-		memcpy(active_lpf_coeffs, fir_hpf_table[idx], sizeof(float) * FIR_TAPS);
+		memcpy(active_lpf_coeffs, fir_lpf_table[idx], sizeof(float) * FIR_TAPS);
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_l, active_lpf_coeffs, fir_delay_lpf_l, FIR_TAPS));
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_r, active_lpf_coeffs, fir_delay_lpf_r, FIR_TAPS));
 		fir_lpf_initialized = true;
