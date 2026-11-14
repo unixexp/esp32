@@ -26,6 +26,12 @@
 	.dout_pin = GPIO_NUM_27, \
 }
 
+#define I2S_CH1_PINOUT_PCM5102 { \
+	.bclk_pin = GPIO_NUM_26, \
+	.ws_pin = GPIO_NUM_25, \
+	.dout_pin = GPIO_NUM_27, \
+}
+
 typedef enum {
     RINGBUFFER_MODE_PROCESSING,    /* ringbuffer is buffering incoming audio data */
     RINGBUFFER_MODE_PREFETCHING,   /* ringbuffer is buffering incoming audio data */

@@ -20,7 +20,7 @@ static uint32_t s_underflow_cnt = 0;
 
 static audio_sink_srv_i2s_cb_t s_i2s_cb;
 static i2s_channel_t chan0 = {
-	.num = 1,
+	.num = 0,
 	.tx_handler = NULL,
 	.state = CHANNEL_STATUS_IDLE,
 	.pinout = I2S_CH0_PINOUT_PCM5102
@@ -157,7 +157,12 @@ void open_i2s_channel(i2s_channel_t *chan) {
 	chan_cfg.dma_desc_num = 10;
 	chan_cfg.dma_frame_num = 512;
     i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
+		.clk_cfg = {
+			.clk_src = I2S_CLK_SRC_APLL,
+			.sample_rate_hz = 44100,
+			.mclk_multiple = I2S_MCLK_MULTIPLE_256,
+			.bclk_div = 8,
+		},
         .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
