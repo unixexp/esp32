@@ -15,17 +15,16 @@
 #include "portmacro.h"
 #include "dsp.h"
 
-// Connection to PCM5102 board pinout
-// BCK
-#define I2S_BCLK_PIN    GPIO_NUM_26
-// LRCK
-#define I2S_WS_PIN      GPIO_NUM_25
-// DIN
-#define I2S_DOUT_PIN    GPIO_NUM_27
-
 static const char *I2S_LOG_TAG = "I2S";
 static uint32_t s_underflow_cnt = 0;
+
 static audio_sink_srv_i2s_cb_t s_i2s_cb;
+static i2s_channel_t chan0 = {
+	.num = 0,
+	.tx_handler = NULL,
+	.state = CHANNEL_STATUS_IDLE,
+	.pinout = I2S_CH0_PINOUT_PCM5102
+};
 
 static uint8_t data_out_lpf[4096];
 
@@ -55,7 +54,7 @@ static void i2s_task_handler(void *args) {
 		data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
 		
 		if (data != NULL) {
-			if (item_size > 0 && s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
+			if (item_size > 0 && s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
@@ -63,7 +62,7 @@ static void i2s_task_handler(void *args) {
 				dsp_just_copy(data, data_out_lpf, item_size);
 				dsp_adjust_volume(data_out_lpf, item_size, 0.40f);
 
-				i2s_channel_write(s_i2s_cb.tx_chan, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}
@@ -81,40 +80,13 @@ static void i2s_task_handler(void *args) {
 
 }
 
-void open_i2s_channel(void) {
-	if (s_i2s_cb.chan_st != CHANNEL_STATUS_IDLE) {
-        ESP_LOGW(I2S_LOG_TAG, "Service already open, skipping initialization");
-        return;
-    }
-	i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    chan_cfg.auto_clear = true;
-	chan_cfg.dma_desc_num = 10;
-	chan_cfg.dma_frame_num = 512;
-    i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = I2S_BCLK_PIN,
-            .ws = I2S_WS_PIN,
-            .dout = I2S_DOUT_PIN,
-            .din = I2S_GPIO_UNUSED,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
-            },
-        },
-    };
-    /* initialize I2S channel */
-    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &s_i2s_cb.tx_chan, NULL));
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_i2s_cb.tx_chan, &std_cfg));
-    s_i2s_cb.chan_st = CHANNEL_STATUS_OPENED;
-	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_OPENED");
+void open_i2s(void) {
+	open_i2s_channel(&chan0);
+	s_i2s_cb.chan0 = &chan0;
 }
 
-void close_i2s_channel(void) {
-	stop_i2s_channel();
+void close_i2s(void) {
+	stop_i2s_channel(s_i2s_cb.chan0);
 	
 	if (s_i2s_cb.write_task_handle) {
 		vTaskDelete(s_i2s_cb.write_task_handle);
@@ -131,25 +103,20 @@ void close_i2s_channel(void) {
 		s_i2s_cb.write_semaphore = NULL;
 	}
 	
-	if (s_i2s_cb.chan_st == CHANNEL_STATUS_OPENED) {
-		ESP_ERROR_CHECK(i2s_del_channel(s_i2s_cb.tx_chan));
-		s_i2s_cb.chan_st = CHANNEL_STATUS_IDLE;
+	if (s_i2s_cb.chan0->state == CHANNEL_STATUS_OPENED) {
+		ESP_ERROR_CHECK(i2s_del_channel(s_i2s_cb.chan0->tx_handler));
+		s_i2s_cb.chan0->state = CHANNEL_STATUS_IDLE;
 	}
 	memset(&s_i2s_cb, 0, sizeof(s_i2s_cb));
-	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_IDLE");
+
+	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_IDLE", s_i2s_cb.chan0->num);
 }
 
-void start_i2s_channel(void) {
-	if (s_i2s_cb.chan_st != CHANNEL_STATUS_OPENED) {
-		ESP_LOGE(I2S_LOG_TAG, "%s TX channel wrong state: %d", __func__, s_i2s_cb.chan_st);
-		return;
-	}
-	
-	ESP_ERROR_CHECK(i2s_channel_enable(s_i2s_cb.tx_chan));
-	ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_ENABLED");
+void start_i2s(void) {
+	start_i2s_channel(s_i2s_cb.chan0);
 	
 	ESP_LOGI(I2S_LOG_TAG, "Mode changed: RINGBUFFER_MODE_PREFETCHING");
-    s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
+	    s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
     if ((s_i2s_cb.write_semaphore == NULL) && (s_i2s_cb.write_semaphore = xSemaphoreCreateBinary()) == NULL) {
         ESP_LOGE(I2S_LOG_TAG, "%s, Semaphore create failed", __func__);
         
@@ -178,19 +145,61 @@ void start_i2s_channel(void) {
 
         }
     }
-	
-	s_i2s_cb.chan_st = CHANNEL_STATUS_ENABLED;
 }
 
-void stop_i2s_channel(void) {
-	if (s_i2s_cb.chan_st == CHANNEL_STATUS_ENABLED) {
-		ESP_ERROR_CHECK(i2s_channel_disable(s_i2s_cb.tx_chan));
-		s_i2s_cb.chan_st = CHANNEL_STATUS_OPENED;
-		ESP_LOGI(I2S_LOG_TAG, "changed state: CHANNEL_STATUS_OPENED");
+void open_i2s_channel(i2s_channel_t *chan) {
+	if (chan->state != CHANNEL_STATUS_IDLE) {
+        ESP_LOGW(I2S_LOG_TAG, "Channel %d already open, skipping initialization", chan->num);
+        return;
+    }
+	i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(chan->num, I2S_ROLE_MASTER);
+    chan_cfg.auto_clear = true;
+	chan_cfg.dma_desc_num = 10;
+	chan_cfg.dma_frame_num = 512;
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
+        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED,
+            .bclk = chan->pinout.bclk_pin,
+            .ws = chan->pinout.ws_pin,
+            .dout = chan->pinout.dout_pin,
+            .din = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
+    };
+    /* initialize I2S channel */
+    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &chan->tx_handler, NULL));
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(chan->tx_handler, &std_cfg));
+    chan->state = CHANNEL_STATUS_OPENED;
+	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_OPENED", chan->num);
+}
+
+void start_i2s_channel(i2s_channel_t *chan) {
+	if (chan->state != CHANNEL_STATUS_OPENED) {
+		ESP_LOGE(I2S_LOG_TAG, "%s TX channel wrong state: %d", __func__, chan->state);
+		return;
+	}
+	
+	ESP_ERROR_CHECK(i2s_channel_enable(chan->tx_handler));
+	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_ENABLED", chan->state);
+	
+	chan->state = CHANNEL_STATUS_ENABLED;
+}
+
+void stop_i2s_channel(i2s_channel_t *chan) {
+	if (chan->state == CHANNEL_STATUS_ENABLED) {
+		ESP_ERROR_CHECK(i2s_channel_disable(chan->tx_handler));
+		chan->state = CHANNEL_STATUS_OPENED;
+		ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_OPENED", chan->num);
 	}
 }
 
-void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {	
+void update_i2s_config(esp_a2d_mcc_t *mcc) {	
 	int sample_rate = 0;
 	int ch_count = 0;
 	
@@ -216,8 +225,10 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 		
 		i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate);
         i2s_std_slot_config_t slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, ch_count);
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.tx_chan, &clk_cfg));
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.tx_chan, &slot_cfg));
+
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan0->tx_handler, &clk_cfg));
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan0->tx_handler, &slot_cfg));
+
         ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x",
                  mcc->cie.m24_info.drc,
                  mcc->cie.m24_info.obj_type,
@@ -252,8 +263,10 @@ void update_i2s_channel_config(esp_a2d_mcc_t *mcc) {
 
         i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate);
         i2s_std_slot_config_t slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, ch_count);
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.tx_chan, &clk_cfg));
-        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.tx_chan, &slot_cfg));
+
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan0->tx_handler, &clk_cfg));
+        ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan0->tx_handler, &slot_cfg));
+
         ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-%d-%d",
                  mcc->cie.sbc_info.samp_freq,
                  mcc->cie.sbc_info.ch_mode,

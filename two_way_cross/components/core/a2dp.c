@@ -30,12 +30,12 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 	                 s_a2dp_conn_state_str[a2dp->conn_stat.state], bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
 	        if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
 	            esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
-				close_i2s_channel();
+				close_i2s();
 	        } else if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
 	            esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
-				start_i2s_channel();
+				start_i2s();
 	        } else if (a2dp->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTING) {
-				open_i2s_channel();
+				open_i2s();
 	        }                                                       
 	        break;                                                    
 	    }
@@ -47,7 +47,7 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 	        break;
 	    }
 		case ESP_A2D_AUDIO_CFG_EVT: {
-			update_i2s_channel_config(&a2dp->audio_cfg.mcc);
+			update_i2s_config(&a2dp->audio_cfg.mcc);
 			break;
 		}
 		default: {

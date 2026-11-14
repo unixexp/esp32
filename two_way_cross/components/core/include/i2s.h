@@ -20,6 +20,12 @@
 #define RINGBUF_PREFETCH_WATER_LEVEL   (4096 * 10)
 #define READ_CHUNK_SIZE 4096
 
+#define I2S_CH0_PINOUT_PCM5102 { \
+	.bclk_pin = GPIO_NUM_26, \
+	.ws_pin = GPIO_NUM_25, \
+	.dout_pin = GPIO_NUM_27, \
+}
+
 typedef enum {
     RINGBUFFER_MODE_PROCESSING,    /* ringbuffer is buffering incoming audio data */
     RINGBUFFER_MODE_PREFETCHING,   /* ringbuffer is buffering incoming audio data */
@@ -32,20 +38,38 @@ typedef enum {
     CHANNEL_STATUS_ENABLED
 } audio_sink_chan_st_t;
 
-typedef struct {                                 
-    i2s_chan_handle_t tx_chan;
-	audio_sink_chan_st_t chan_st;
+typedef struct {
+	int bclk_pin;
+	int ws_pin;
+	int dout_pin;
+} i2s_channel_pinout_t;
+
+typedef struct {
+	int num;
+	i2s_chan_handle_t tx_handler;
+	audio_sink_chan_st_t state;
+	i2s_channel_pinout_t pinout;
+} i2s_channel_t;
+
+typedef struct {
+	i2s_channel_t *chan0;
+	i2s_channel_t *chan1;
 	RingbufHandle_t ring_buf;
 	TaskHandle_t write_task_handle;
 	SemaphoreHandle_t write_semaphore;
 	uint16_t ring_buf_mode;
 } audio_sink_srv_i2s_cb_t;
 
-void open_i2s_channel(void);
-void close_i2s_channel(void);
-void start_i2s_channel(void);
-void stop_i2s_channel(void);
-void update_i2s_channel_config(esp_a2d_mcc_t *mcc);
+void open_i2s(void);
+void close_i2s(void);
+void start_i2s(void);
+void stop_i2s(void);
+void update_i2s_config(esp_a2d_mcc_t *mcc);
+
+void open_i2s_channel(i2s_channel_t *chan);
+void start_i2s_channel(i2s_channel_t *chan);
+void stop_i2s_channel(i2s_channel_t *chan);
+void update_i2s_config(esp_a2d_mcc_t *mcc);
 size_t output_i2s_data(const uint8_t *data, size_t size);
 
 #endif /* _I2S_H_ */
