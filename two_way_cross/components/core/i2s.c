@@ -23,7 +23,7 @@ static i2s_channel_t chan0 = {
 	.num = 0,
 	.tx_handler = NULL,
 	.state = CHANNEL_STATUS_IDLE,
-	.pinout = I2S_CH0_PINOUT_PCM5102
+	.pinout = I2S_CH1_PINOUT_PCM5102
 };
 
 static uint8_t data_out_lpf[4096];

@@ -21,15 +21,15 @@
 #define READ_CHUNK_SIZE 4096
 
 #define I2S_CH0_PINOUT_PCM5102 { \
-	.bclk_pin = GPIO_NUM_26, \
-	.ws_pin = GPIO_NUM_25, \
-	.dout_pin = GPIO_NUM_27, \
+	.bclk_pin = GPIO_NUM_33, \
+	.ws_pin = GPIO_NUM_32, \
+	.dout_pin = GPIO_NUM_25, \
 }
 
 #define I2S_CH1_PINOUT_PCM5102 { \
-	.bclk_pin = GPIO_NUM_26, \
-	.ws_pin = GPIO_NUM_25, \
-	.dout_pin = GPIO_NUM_27, \
+	.bclk_pin = GPIO_NUM_27, \
+	.ws_pin = GPIO_NUM_14, \
+	.dout_pin = GPIO_NUM_26, \
 }
 
 typedef enum {
