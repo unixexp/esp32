@@ -23,6 +23,13 @@ static i2s_channel_t chan0 = {
 	.num = 0,
 	.tx_handler = NULL,
 	.state = CHANNEL_STATUS_IDLE,
+	.pinout = I2S_CH0_PINOUT_PCM5102
+};
+
+static i2s_channel_t chan1 = {
+	.num = 1,
+	.tx_handler = NULL,
+	.state = CHANNEL_STATUS_IDLE,
 	.pinout = I2S_CH1_PINOUT_PCM5102
 };
 
@@ -54,7 +61,7 @@ static void i2s_task_handler(void *args) {
 		data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
 		
 		if (data != NULL) {
-			if (item_size > 0 && s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED) {
+			if (item_size > 0 && s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED && s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
@@ -63,6 +70,7 @@ static void i2s_task_handler(void *args) {
 				dsp_adjust_volume(data_out_lpf, item_size, 0.40f);
 
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}
@@ -82,11 +90,14 @@ static void i2s_task_handler(void *args) {
 
 void open_i2s(void) {
 	open_i2s_channel(&chan0);
+	open_i2s_channel(&chan1);
 	s_i2s_cb.chan0 = &chan0;
+	s_i2s_cb.chan1 = &chan1;
 }
 
 void close_i2s(void) {
 	stop_i2s_channel(s_i2s_cb.chan0);
+	stop_i2s_channel(s_i2s_cb.chan1);
 	
 	if (s_i2s_cb.write_task_handle) {
 		vTaskDelete(s_i2s_cb.write_task_handle);
@@ -107,13 +118,21 @@ void close_i2s(void) {
 		ESP_ERROR_CHECK(i2s_del_channel(s_i2s_cb.chan0->tx_handler));
 		s_i2s_cb.chan0->state = CHANNEL_STATUS_IDLE;
 	}
+	
+	if (s_i2s_cb.chan1->state == CHANNEL_STATUS_OPENED) {
+			ESP_ERROR_CHECK(i2s_del_channel(s_i2s_cb.chan1->tx_handler));
+			s_i2s_cb.chan1->state = CHANNEL_STATUS_IDLE;
+		}
+	
 	memset(&s_i2s_cb, 0, sizeof(s_i2s_cb));
 
 	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_IDLE", s_i2s_cb.chan0->num);
+	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_IDLE", s_i2s_cb.chan1->num);
 }
 
 void start_i2s(void) {
 	start_i2s_channel(s_i2s_cb.chan0);
+	start_i2s_channel(s_i2s_cb.chan1);
 	
 	ESP_LOGI(I2S_LOG_TAG, "Mode changed: RINGBUFFER_MODE_PREFETCHING");
 	    s_i2s_cb.ring_buf_mode = RINGBUFFER_MODE_PREFETCHING;
@@ -191,7 +210,7 @@ void start_i2s_channel(i2s_channel_t *chan) {
 	}
 	
 	ESP_ERROR_CHECK(i2s_channel_enable(chan->tx_handler));
-	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_ENABLED", chan->state);
+	ESP_LOGI(I2S_LOG_TAG, "Channel %d changed state: CHANNEL_STATUS_ENABLED", chan->num);
 	
 	chan->state = CHANNEL_STATUS_ENABLED;
 }
@@ -233,6 +252,8 @@ void update_i2s_config(esp_a2d_mcc_t *mcc) {
 
         ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan0->tx_handler, &clk_cfg));
         ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan0->tx_handler, &slot_cfg));
+		ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan1->tx_handler, &clk_cfg));
+		ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan1->tx_handler, &slot_cfg));
 
         ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x-0x%x",
                  mcc->cie.m24_info.drc,
@@ -271,6 +292,8 @@ void update_i2s_config(esp_a2d_mcc_t *mcc) {
 
         ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan0->tx_handler, &clk_cfg));
         ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan0->tx_handler, &slot_cfg));
+		ESP_ERROR_CHECK(i2s_channel_reconfig_std_clock(s_i2s_cb.chan1->tx_handler, &clk_cfg));
+		ESP_ERROR_CHECK(i2s_channel_reconfig_std_slot(s_i2s_cb.chan1->tx_handler, &slot_cfg));
 
         ESP_LOGI(I2S_LOG_TAG, "Configure audio player: 0x%x-0x%x-0x%x-0x%x-0x%x-%d-%d",
                  mcc->cie.sbc_info.samp_freq,
