@@ -10,5 +10,6 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size);
 void dsp_init_fir_hpf(u_int8_t step);
 void dsp_cross_fir_hpf(void *data_in, void *data_out, size_t item_size);
 void dsp_just_copy(void *data_in, void *data_out, size_t item_size);
+void dsp_mono_downmix(void *data, size_t item_size);
 
 #endif

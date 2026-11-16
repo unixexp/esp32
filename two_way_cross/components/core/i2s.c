@@ -67,12 +67,13 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen = 0;
 				
 				// Audio processing
+				dsp_mono_downmix(data, item_size);
 				dsp_cross_fir_lpf(data, data_out_lpf, item_size);
 				dsp_cross_fir_hpf(data, data_out_hpf, item_size);
-				// dsp_just_copy(data, data_out_lpf, item_size);
+				// LPF/HPF balance
 				dsp_adjust_volume(data_out_lpf, item_size, 0.40f);
 				dsp_adjust_volume(data_out_hpf, item_size, 0.40f);
-
+				// Write filtered data to i2s channels
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
 				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_hpf, item_size, &bytes_writen, portMAX_DELAY);
 			} else {

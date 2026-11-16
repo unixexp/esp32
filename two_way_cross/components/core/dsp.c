@@ -44,6 +44,18 @@ void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
 	memcpy(data_out, data_in, size_bytes);
 }
 
+void dsp_mono_downmix(void *data, size_t item_size) {
+	int16_t *samples = (int16_t *)data;
+    int num_samples = item_size / sizeof(int16_t);
+    for (int i = 0; i < num_samples; i+=2) {
+		int32_t left = samples[i];
+		int32_t right = samples[i+1];
+		int16_t mono_sample = (int16_t)((left + right) / 2);
+        samples[i] = mono_sample;
+		samples[i+1] = mono_sample;
+    }
+}
+
 void dsp_init_fir_lpf(u_int8_t idx) {
 	size_t size = sizeof(fir_lpf_table) / sizeof(fir_lpf_table[0]);
 	if (size == 0) {
