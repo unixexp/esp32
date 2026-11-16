@@ -19,6 +19,15 @@ static float in_lpf_l[BLOCK_SAMPLES], out_lpf_l[BLOCK_SAMPLES];
 static float in_lpf_r[BLOCK_SAMPLES], out_lpf_r[BLOCK_SAMPLES];
 static bool fir_lpf_initialized = false;
 
+static float active_hpf_coeffs[FIR_TAPS];
+static float fir_delay_hpf_l[FIR_TAPS];
+static float fir_delay_hpf_r[FIR_TAPS];
+static fir_f32_t fir_hpf_l;
+static fir_f32_t fir_hpf_r;
+static float in_hpf_l[BLOCK_SAMPLES], out_hpf_l[BLOCK_SAMPLES];
+static float in_hpf_r[BLOCK_SAMPLES], out_hpf_r[BLOCK_SAMPLES];
+static bool fir_hpf_initialized = false;
+
 // value from 0.0 to 1.0
 void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
 	int16_t *samples = (int16_t *)data;
@@ -26,6 +35,13 @@ void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
     for (int i = 0; i < num_samples; i++) {
         samples[i] = (int16_t)(samples[i] * multiplier);
     }
+}
+
+void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
+	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
+		return;
+	}
+	memcpy(data_out, data_in, size_bytes);
 }
 
 void dsp_init_fir_lpf(u_int8_t idx) {
@@ -41,13 +57,6 @@ void dsp_init_fir_lpf(u_int8_t idx) {
 		fir_lpf_initialized = true;
 		ESP_LOGI(DSP_LOG_TAG, "DSP FIR Low Pass instance initialized.");
 	}
-}
-
-void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
-	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
-		return;
-	}
-	memcpy(data_out, data_in, size_bytes);
 }
 
 void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
@@ -114,4 +123,73 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 	}
 }
 
+void dsp_init_fir_hpf(u_int8_t idx) {
+	size_t size = sizeof(fir_hpf_table) / sizeof(fir_hpf_table[0]);
+	if (size == 0) {
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Any coefficients found.");
+	} else if ((size_t)idx >= size) {
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Coefficient index outbound.");
+	} else if (!fir_hpf_initialized) {
+		memcpy(active_hpf_coeffs, fir_hpf_table[idx], sizeof(float) * FIR_TAPS);
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_l, active_hpf_coeffs, fir_delay_hpf_l, FIR_TAPS));
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_r, active_hpf_coeffs, fir_delay_hpf_r, FIR_TAPS));
+		fir_hpf_initialized = true;
+		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
+	}
+}
 
+void dsp_cross_fir_hpf(void *data_in, void *data_out, size_t size_bytes) {
+	if (!fir_hpf_initialized) return;
+	if (size_bytes == 0) return;
+	
+	const int16_t *samples_in = (int16_t *)data_in;
+	int16_t *samples_out = (int16_t *)data_out;
+	
+	// Summary count of stereo-pairs (one channel - 2 byte, one pair - 4 byte)
+	size_t total_samples = size_bytes / (sizeof(int16_t) * 2);
+	size_t processed_samples = 0;
+	
+	while (processed_samples < total_samples) {
+		size_t chunk_samples = total_samples - processed_samples;
+		if (chunk_samples > BLOCK_SAMPLES) {
+			chunk_samples = BLOCK_SAMPLES;
+		}
+		
+		// Deinterleaving input data of stereo pairs
+		for (size_t i = 0; i < chunk_samples; i++) {
+			size_t idx = (processed_samples + i) * 2;
+			in_hpf_l[i] = (float)samples_in[idx] / 32768.0f;
+			in_hpf_r[i] = (float)samples_in[idx + 1] / 32768.0f;
+		}
+		
+		// Accept filter
+		dsps_fir_f32(&fir_hpf_l, in_hpf_l, out_hpf_l, chunk_samples);
+		dsps_fir_f32(&fir_hpf_r, in_hpf_r, out_hpf_r, chunk_samples);
+		
+		// Interleaving to stereo pairs and record to output data
+		for (size_t i = 0; i < chunk_samples; i++) {
+			float l = out_hpf_l[i] * 32768.0f;
+			float r = out_hpf_r[i] * 32768.0f;
+			
+			// int16 overload protection
+			if (l > 32767.0f) {
+				l = 32767.0f;
+			} else if (l < -32768.0f) {
+				l = -32768.0f;
+			}
+
+            if (r > 32767.0f) {
+				r = 32767.0f;
+			} else if (r < -32768.0f) {
+				r = -32768.0f;
+			}
+			
+			// Record to output data
+			size_t idx = (processed_samples + i) * 2;
+			samples_out[idx] = (int16_t)l;
+			samples_out[idx + 1] = (int16_t)r;
+		}
+		
+		processed_samples += chunk_samples;
+	}
+}
