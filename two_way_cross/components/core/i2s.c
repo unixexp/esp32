@@ -35,6 +35,7 @@ static i2s_channel_t chan1 = {
 
 static uint8_t data_out_lpf[4096];
 static uint8_t data_out_hpf[4096];
+static uint8_t data_out_lpf_peaked[4096];
 
 static void i2s_task_handler(void *args) {
 
@@ -45,6 +46,8 @@ static void i2s_task_handler(void *args) {
 	
 	dsp_init_fir_lpf(0);
 	dsp_init_fir_hpf(0);
+	
+	peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
 	
 	for (;;) {
 		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
@@ -68,14 +71,15 @@ static void i2s_task_handler(void *args) {
 				
 				// Audio processing
 				// dsp_mono_downmix(data, item_size);
-				dsp_cross_fir_lpf(data, data_out_lpf, item_size);
+				peak_filter(data, data_out_lpf_peaked, item_size);
+				dsp_cross_fir_lpf(data_out_lpf_peaked, data_out_lpf, item_size);
 				dsp_cross_fir_hpf(data, data_out_hpf, item_size);
 				// LPF/HPF balance
-				dsp_adjust_volume(data, item_size, 0.70f);
-				dsp_adjust_volume(data, item_size, 0.70f);
+				// dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
+				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
 				// Write filtered data to i2s channels
-				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, item_size, &bytes_writen, portMAX_DELAY);
-				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data, item_size, &bytes_writen, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_hpf, item_size, &bytes_writen, portMAX_DELAY);
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}

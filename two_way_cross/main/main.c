@@ -11,7 +11,7 @@ void app_main(void)
 	
     init_nvs();
 	init_bluetooth_controller();
-	init_bluedroid_host("YR Audio Module", true, pin, sizeof(pin));
+	init_bluedroid_host("DSP Audio Crossover", true, pin, sizeof(pin));
 	init_a2dp();
 	
 }

@@ -1,6 +1,9 @@
 #include <stdio.h>
+#include <math.h>
 #include <sys/types.h>
 #include "dsp.h"
+#include "dsps_biquad.h"
+#include "dsps_biquad_platform.h"
 #include "dsps_fir.h"
 #include "esp_dsp.h"
 #include "esp_err.h"
@@ -27,6 +30,12 @@ static fir_f32_t fir_hpf_r;
 static float in_hpf_l[BLOCK_SAMPLES], out_hpf_l[BLOCK_SAMPLES];
 static float in_hpf_r[BLOCK_SAMPLES], out_hpf_r[BLOCK_SAMPLES];
 static bool fir_hpf_initialized = false;
+
+static float in_peak_l[BLOCK_SAMPLES], out_peak_l[BLOCK_SAMPLES];
+static float in_peak_r[BLOCK_SAMPLES], out_peak_r[BLOCK_SAMPLES];
+static float peak_coeffs[5];
+static float peak_delay_line_l[2] = {0.0f, 0.0f};
+static float peak_delay_line_r[2] = {0.0f, 0.0f};
 
 // value from 0.0 to 1.0
 void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
@@ -182,6 +191,85 @@ void dsp_cross_fir_hpf(void *data_in, void *data_out, size_t size_bytes) {
 		for (size_t i = 0; i < chunk_samples; i++) {
 			float l = out_hpf_l[i] * 32768.0f;
 			float r = out_hpf_r[i] * 32768.0f;
+			
+			// int16 overload protection
+			if (l > 32767.0f) {
+				l = 32767.0f;
+			} else if (l < -32768.0f) {
+				l = -32768.0f;
+			}
+
+            if (r > 32767.0f) {
+				r = 32767.0f;
+			} else if (r < -32768.0f) {
+				r = -32768.0f;
+			}
+			
+			// Record to output data
+			size_t idx = (processed_samples + i) * 2;
+			samples_out[idx] = (int16_t)l;
+			samples_out[idx + 1] = (int16_t)r;
+		}
+		
+		processed_samples += chunk_samples;
+	}
+}
+
+void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db) {
+    double A = pow(10.0, gain_db / 40.0);
+    double w0 = 2.0 * M_PI * f0 / fs;
+    double sin_w0 = sin(w0);
+    double cos_w0 = cos(w0);
+    double alpha = sin_w0 / (2.0 * q);
+
+    double b0 = 1.0 + alpha * A;
+    double b1 = -2.0 * cos_w0;
+    double b2 = 1.0 - alpha * A;
+    double a0 = 1.0 + alpha / A;
+    double a1 = -2.0 * cos_w0;
+    double a2 = 1.0 - alpha / A;
+
+    peak_coeffs[0] = (float)(b0 / a0);
+    peak_coeffs[1] = (float)(b1 / a0);
+    peak_coeffs[2] = (float)(b2 / a0);
+    peak_coeffs[3] = (float)(a1 / a0);
+    peak_coeffs[4] = (float)(a2 / a0);
+
+    peak_delay_line_l[0] = 0.0f; peak_delay_line_l[1] = 0.0f;
+    peak_delay_line_r[0] = 0.0f; peak_delay_line_r[1] = 0.0f;
+}
+
+void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
+	if (size_bytes == 0) return;
+	
+	const int16_t *samples_in = (int16_t *)data_in;
+	int16_t *samples_out = (int16_t *)data_out;
+	
+	// Summary count of stereo-pairs (one channel - 2 byte, one pair - 4 byte)
+	size_t total_samples = size_bytes / (sizeof(int16_t) * 2);
+	size_t processed_samples = 0;
+	
+	while (processed_samples < total_samples) {
+		size_t chunk_samples = total_samples - processed_samples;
+		if (chunk_samples > BLOCK_SAMPLES) {
+			chunk_samples = BLOCK_SAMPLES;
+		}
+		
+		// Deinterleaving input data of stereo pairs
+		for (size_t i = 0; i < chunk_samples; i++) {
+			size_t idx = (processed_samples + i) * 2;
+			in_peak_l[i] = (float)samples_in[idx] / 32768.0f;
+			in_peak_r[i] = (float)samples_in[idx + 1] / 32768.0f;
+		}
+		
+		// Accept filter
+		dsps_biquad_f32(in_peak_l, out_peak_l, chunk_samples, peak_coeffs, peak_delay_line_l);
+		dsps_biquad_f32(in_peak_r, out_peak_r, chunk_samples, peak_coeffs, peak_delay_line_r);
+		
+		// Interleaving to stereo pairs and record to output data
+		for (size_t i = 0; i < chunk_samples; i++) {
+			float l = out_peak_l[i] * 32768.0f;
+			float r = out_peak_r[i] * 32768.0f;
 			
 			// int16 overload protection
 			if (l > 32767.0f) {
