@@ -62,10 +62,10 @@ static void i2s_task_handler(void *args) {
 	}
 	*/
 	
-	dsp_init_fir_lpf(0);
-	dsp_init_fir_hpf(0);
+	//dsp_init_fir_lpf(0);
+	//dsp_init_fir_hpf(0);
 	
-	peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
+	//peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
 	
 	// Variables to logging delta time between I2S writes
 	uint32_t dbg_iter = 0;
@@ -110,6 +110,7 @@ static void i2s_task_handler(void *args) {
 				// dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
 				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
 				
+				/*
 				int64_t t0 = esp_timer_get_time();
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, len, &bytes_writen_0, portMAX_DELAY);
 				int64_t t1 = esp_timer_get_time();
@@ -144,6 +145,7 @@ static void i2s_task_handler(void *args) {
 					                         (bytes_writen_0 == len) ? 1 : 0,
 					                         (bytes_writen_1 == len) ? 1 : 0);
 				}
+				*/
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}
@@ -249,12 +251,7 @@ void open_i2s_channel(i2s_channel_t *chan) {
 	chan_cfg.dma_desc_num = 4;
 	chan_cfg.dma_frame_num = 512;
     i2s_std_config_t std_cfg = {
-		.clk_cfg = {
-			.clk_src = I2S_CLK_SRC_APLL,
-			.sample_rate_hz = 44100,
-			.mclk_multiple = I2S_MCLK_MULTIPLE_256,
-			.bclk_div = 8,
-		},
+		.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
         .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
@@ -269,6 +266,7 @@ void open_i2s_channel(i2s_channel_t *chan) {
             },
         },
     };
+	std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_APLL;
     /* initialize I2S channel */
     ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &chan->tx_handler, NULL));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(chan->tx_handler, &std_cfg));

@@ -37,32 +37,44 @@ static float peak_coeffs[5];
 static float peak_delay_line_l[2] = {0.0f, 0.0f};
 static float peak_delay_line_r[2] = {0.0f, 0.0f};
 
-// value from 0.0 to 1.0
-void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
-	int16_t *samples = (int16_t *)data;
-    int num_samples = item_size / sizeof(int16_t);
-    for (int i = 0; i < num_samples; i++) {
-        samples[i] = (int16_t)(samples[i] * multiplier);
-    }
-}
+// Converter single channel to int16
 
-void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
-	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
+void dsp_convert_ch_to_int16(float *ch_data_in, int16_t *ch_data_out, size_t len, size_t out_samples_block) {
+	if (ch_data_in == NULL || ch_data_out == NULL || len < sizeof(int16_t) || out_samples_block == 0) {
 		return;
+	} else {
+		
 	}
-	memcpy(data_out, data_in, size_bytes);
 }
 
-void dsp_mono_downmix(void *data, size_t item_size) {
-	int16_t *samples = (int16_t *)data;
-    int num_samples = item_size / sizeof(int16_t);
-    for (int i = 0; i < num_samples; i+=2) {
-		int32_t left = samples[i];
-		int32_t right = samples[i+1];
-		int16_t mono_sample = (int16_t)((left + right) / 2);
-        samples[i] = mono_sample;
-		samples[i+1] = mono_sample;
-    }
+// data_l_out and data_r_out should be initialized with max chunk size:
+// #define OUT_SAMPLES_BLOCK 512
+// static float data_out_l[OUT_SAMPLES_BLOCK], data_out_r[OUT_SAMPLES_BLOCK]
+
+void dsp_stereo_split_float(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t out_samples_block) {
+	if (data_in == NULL || data_out_l == NULL || data_out_r == NULL ||
+		len < sizeof(int16_t) * 2 || out_samples_block == 0) {
+        return;
+	} else {
+		const float scale = 1.0f / 32768.0f;
+		size_t total_samples = len / (sizeof(int16_t) * 2);
+		size_t processed_samples = 0;
+			
+		while (processed_samples < total_samples) {
+			size_t chunk_samples = total_samples - processed_samples;
+			if (chunk_samples > out_samples_block) {
+				chunk_samples = out_samples_block;
+			}
+			
+			for (size_t i = 0; i < chunk_samples; i++) {
+				size_t idx = (processed_samples + i) * 2;
+				data_out_l[i] = (float)data_in[idx] * scale;
+				data_out_r[i] = (float)data_in[idx + 1] * scale;
+			}
+			
+			processed_samples += chunk_samples;
+		}
+	}
 }
 
 void dsp_init_fir_lpf(u_int8_t idx) {
@@ -78,6 +90,29 @@ void dsp_init_fir_lpf(u_int8_t idx) {
 		fir_lpf_initialized = true;
 		ESP_LOGI(DSP_LOG_TAG, "DSP FIR Low Pass instance initialized.");
 	}
+}
+
+void dsp_init_fir_hpf(u_int8_t idx) {
+	size_t size = sizeof(fir_hpf_table) / sizeof(fir_hpf_table[0]);
+	if (size == 0) {
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Any coefficients found.");
+	} else if ((size_t)idx >= size) {
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Coefficient index outbound.");
+	} else if (!fir_hpf_initialized) {
+		memcpy(active_hpf_coeffs, fir_hpf_table[idx], sizeof(float) * FIR_TAPS);
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_l, active_hpf_coeffs, fir_delay_hpf_l, FIR_TAPS));
+		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_r, active_hpf_coeffs, fir_delay_hpf_r, FIR_TAPS));
+		fir_hpf_initialized = true;
+		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
+	}
+}
+
+/*
+void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
+	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
+		return;
+	}
+	memcpy(data_out, data_in, size_bytes);
 }
 
 void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
@@ -132,30 +167,13 @@ void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 			samples_out[idx + 1] = (int16_t)r;
 		}
 		
-		/*
 		ESP_LOGI(DSP_LOG_TAG, "item_size: %d", item_size);
 		ESP_LOGI(DSP_LOG_TAG, "total_samples: %d", total_samples);
 		ESP_LOGI(DSP_LOG_TAG, "processed_samples: %d", processed_samples);
 		ESP_LOGI(DSP_LOG_TAG, "chunk_samples: %d", chunk_samples);
 		ESP_LOGI(DSP_LOG_TAG, "-------------------------------");
-		*/
 		
 		processed_samples += chunk_samples;
-	}
-}
-
-void dsp_init_fir_hpf(u_int8_t idx) {
-	size_t size = sizeof(fir_hpf_table) / sizeof(fir_hpf_table[0]);
-	if (size == 0) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Any coefficients found.");
-	} else if ((size_t)idx >= size) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Coefficient index outbound.");
-	} else if (!fir_hpf_initialized) {
-		memcpy(active_hpf_coeffs, fir_hpf_table[idx], sizeof(float) * FIR_TAPS);
-		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_l, active_hpf_coeffs, fir_delay_hpf_l, FIR_TAPS));
-		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_r, active_hpf_coeffs, fir_delay_hpf_r, FIR_TAPS));
-		fir_hpf_initialized = true;
-		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
 	}
 }
 
@@ -293,3 +311,25 @@ void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
 		processed_samples += chunk_samples;
 	}
 }
+
+void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
+	int16_t *samples = (int16_t *)data;
+    int num_samples = item_size / sizeof(int16_t);
+    for (int i = 0; i < num_samples; i++) {
+        samples[i] = (int16_t)(samples[i] * multiplier);
+    }
+}
+
+void dsp_mono_downmix(void *data, size_t item_size) {
+	int16_t *samples = (int16_t *)data;
+    int num_samples = item_size / sizeof(int16_t);
+    for (int i = 0; i < num_samples; i+=2) {
+		int32_t left = samples[i];
+		int32_t right = samples[i+1];
+		int16_t mono_sample = (int16_t)((left + right) / 2);
+        samples[i] = mono_sample;
+		samples[i+1] = mono_sample;
+    }
+}
+
+*/
