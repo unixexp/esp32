@@ -111,9 +111,9 @@ static void i2s_task_handler(void *args) {
 				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
 				
 				int64_t t0 = esp_timer_get_time();
-				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data, len, &bytes_writen_1, portMAX_DELAY);
-				int64_t t1 = esp_timer_get_time();
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, len, &bytes_writen_0, portMAX_DELAY);
+				int64_t t1 = esp_timer_get_time();
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data, len, &bytes_writen_1, portMAX_DELAY);
 				int64_t t2 = esp_timer_get_time();
 				
 				int64_t dt_ch0 = t1 - t0;
@@ -246,7 +246,7 @@ void open_i2s_channel(i2s_channel_t *chan) {
     }
 	i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(chan->num, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
-	chan_cfg.dma_desc_num = 10;
+	chan_cfg.dma_desc_num = 4;
 	chan_cfg.dma_frame_num = 512;
     i2s_std_config_t std_cfg = {
 		.clk_cfg = {
