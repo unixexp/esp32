@@ -8,8 +8,7 @@
 #include "i2s.h"
 
 static const char *A2DP_LOG_TAG = "A2DP";
-
-static uint32_t s_pkt_cnt = 0;                     
+                   
 static const char *s_a2dp_conn_state_str[] = {"Disconnected", "Connecting", "Connected", "Disconnecting"};
 static const char *s_a2dp_audio_state_str[] = {"Suspended", "Started"};
 
@@ -41,9 +40,6 @@ static void a2dp_state_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *a2dp) {
 	    }
 	    case ESP_A2D_AUDIO_STATE_EVT: {
 	        ESP_LOGI(A2DP_LOG_TAG, "A2DP audio state: %s", s_a2dp_audio_state_str[a2dp->audio_stat.state]);
-	        if (ESP_A2D_AUDIO_STATE_STARTED == a2dp->audio_stat.state) {
-	            s_pkt_cnt = 0;
-	        }
 	        break;
 	    }
 		case ESP_A2D_AUDIO_CFG_EVT: {

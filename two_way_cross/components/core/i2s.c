@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "driver/i2s_std.h"
 #include "esp_a2dp_api.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/ringbuf.h"
@@ -44,10 +45,35 @@ static void i2s_task_handler(void *args) {
 	
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
 	
+	/*
+	const size_t prefill_chunk = 4096;
+	const int prefill_blocks = 2;
+	uint8_t *zero_buf = (uint8_t *)calloc(1, prefill_chunk);
+	if (zero_buf != NULL &&
+			s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
+			s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
+		for (int i = 0; i < prefill_blocks; i++) {
+		        size_t w0 = 0;
+		        size_t w1 = 0;
+		        i2s_channel_write(s_i2s_cb.chan0->tx_handler, zero_buf, prefill_chunk, &w0, portMAX_DELAY);
+		        i2s_channel_write(s_i2s_cb.chan1->tx_handler, zero_buf, prefill_chunk, &w1, portMAX_DELAY);
+		    }
+		    free(zero_buf);
+	}
+	*/
+	
 	dsp_init_fir_lpf(0);
 	dsp_init_fir_hpf(0);
 	
 	peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
+	
+	// Variables to logging delta time between I2S writes
+	uint32_t dbg_iter = 0;
+	int64_t max_dt_ch0 = 0;
+	int64_t max_dt_ch1 = 0;
+	size_t last_item_size = 0;
+	const uint32_t dbg_period = 200;
+	// Variables to logging delta time between I2S writes END
 	
 	for (;;) {
 		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
@@ -63,23 +89,61 @@ static void i2s_task_handler(void *args) {
 		}
 		
 		item_size = 0;
-		data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size, (TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
+		data = (uint8_t *)xRingbufferReceiveUpTo(s_i2s_cb.ring_buf, &item_size,
+			(TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
 		
 		if (data != NULL) {
-			if (item_size > 0 && s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED && s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
-				size_t bytes_writen = 0;
+			size_t len = item_size & ~((size_t)3);
+			if (len > 0 &&
+					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
+					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
+				size_t bytes_writen_0 = 0;
+				size_t bytes_writen_1 = 0;
 				
 				// Audio processing
-				dsp_mono_downmix(data, item_size);
-				peak_filter(data, data_out_lpf_peaked, item_size);
-				dsp_cross_fir_lpf(data_out_lpf_peaked, data_out_lpf, item_size);
-				dsp_cross_fir_hpf(data, data_out_hpf, item_size);
+				// dsp_mono_downmix(data, item_size);
+				// peak_filter(data, data_out_lpf_peaked, item_size);
+				// dsp_cross_fir_lpf(data, data_out_lpf, item_size);
+				// dsp_cross_fir_hpf(data, data_out_hpf, item_size);
 				// LPF/HPF balance
-				dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
-				dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
-				// Write filtered data to i2s channels
-				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_lpf, item_size, &bytes_writen, portMAX_DELAY);
-				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_hpf, item_size, &bytes_writen, portMAX_DELAY);
+				// dsp_adjust_volume(data, item_size, 0.70f);
+				// dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
+				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
+				
+				int64_t t0 = esp_timer_get_time();
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data, len, &bytes_writen_1, portMAX_DELAY);
+				int64_t t1 = esp_timer_get_time();
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, len, &bytes_writen_0, portMAX_DELAY);
+				int64_t t2 = esp_timer_get_time();
+				
+				int64_t dt_ch0 = t1 - t0;
+				int64_t dt_ch1 = t2 - t1;
+				int64_t dt_total = t2 - t0;
+				
+				if (dt_ch0 > max_dt_ch0) max_dt_ch0 = dt_ch0;
+				if (dt_ch1 > max_dt_ch1) max_dt_ch1 = dt_ch1;
+				last_item_size = item_size;
+				
+				dbg_iter++;
+				if (dbg_iter >= dbg_period) {
+					ESP_LOGI(I2S_LOG_TAG,
+					                         "sz=%u, dt0=%lld us (max=%lld), dt1=%lld us (max=%lld), diff=%lld us",
+					                         (unsigned)last_item_size,
+					                         (long long)dt_ch0, (long long)max_dt_ch0,
+					                         (long long)dt_ch1, (long long)max_dt_ch1,
+					                         (long long)(t1 - t0));
+					                dbg_iter = 0;
+					                max_dt_ch0 = 0;
+					                max_dt_ch1 = 0;
+									
+					ESP_LOGI(I2S_LOG_TAG,
+					                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
+					                         (unsigned)len,
+					                         (unsigned)bytes_writen_0,
+					                         (unsigned)bytes_writen_1,
+					                         (bytes_writen_0 == len) ? 1 : 0,
+					                         (bytes_writen_1 == len) ? 1 : 0);
+				}
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}
