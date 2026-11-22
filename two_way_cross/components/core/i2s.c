@@ -35,8 +35,10 @@ static i2s_channel_t chan1 = {
 };
 
 #define MAX_CHUNK 512
-static float fdata_l[MAX_CHUNK], fdata_r[MAX_CHUNK];
-static uint8_t data_wf_tw_l[4096], data_wf_tw_r[4096];
+#define MAX_CHANNEL_SAMPLES 1024
+static float fdata_l[MAX_CHANNEL_SAMPLES], fdata_r[MAX_CHANNEL_SAMPLES];
+static uint8_t data_wf_tw_l[MAX_CHANNEL_SAMPLES * sizeof(int16_t) * 2];
+static uint8_t data_wf_tw_r[MAX_CHANNEL_SAMPLES * sizeof(int16_t) * 2];
 
 static void i2s_task_handler(void *args) {
 
