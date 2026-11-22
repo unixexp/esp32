@@ -4,8 +4,10 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-void dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len, size_t max_chunk);
-void dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t max_chunk);
+#define MAX_SAMPLES 1024
+
+size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len_bytes);
+size_t dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len_bytes);
 
 int dsp_init_fir_lpf(uint8_t idx);
 int dsp_init_fir_hpf(uint8_t idx);

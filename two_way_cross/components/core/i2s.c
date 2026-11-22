@@ -34,11 +34,9 @@ static i2s_channel_t chan1 = {
 	.pinout = I2S_CH1_PINOUT_PCM5102
 };
 
-#define MAX_CHUNK 512
-#define MAX_CHANNEL_SAMPLES 1024
-static float fdata_l[MAX_CHANNEL_SAMPLES], fdata_r[MAX_CHANNEL_SAMPLES];
-static uint8_t data_wf_tw_l[MAX_CHANNEL_SAMPLES * sizeof(int16_t) * 2];
-static uint8_t data_wf_tw_r[MAX_CHANNEL_SAMPLES * sizeof(int16_t) * 2];
+static float fdata_l[MAX_SAMPLES], fdata_r[MAX_SAMPLES];
+static uint8_t data_wf_tw_l[MAX_SAMPLES * sizeof(int16_t) * 2];
+static uint8_t data_wf_tw_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 
 static void i2s_task_handler(void *args) {
 
@@ -78,60 +76,53 @@ static void i2s_task_handler(void *args) {
 			(TickType_t)pdMS_TO_TICKS(400), READ_CHUNK_SIZE);
 		
 		if (data != NULL) {
-			size_t len = item_size & ~((size_t)3);
-			if (len > 0 &&
+			size_t len_bytes = item_size & ~((size_t)3);
+			if (len_bytes > 0 &&
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
-
-				size_t bytes_writen_ch0 = 0;
-				size_t bytes_writen_ch1 = 0;
 				
-				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len, MAX_CHUNK);
-				dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_wf_tw_l, len, MAX_CHUNK);
-				
-				// Audio processing
-				// dsp_mono_downmix(data, item_size);
-				// peak_filter(data, data_out_lpf_peaked, item_size);
-				// dsp_cross_fir_lpf(data, data_out_lpf, item_size);
-				// dsp_cross_fir_hpf(data, data_out_hpf, item_size);
-				// LPF/HPF balance
-				// dsp_adjust_volume(data, item_size, 0.70f);
-				// dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
-				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
-				
-				int64_t t0 = esp_timer_get_time();
-				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_l, len, &bytes_writen_ch0, portMAX_DELAY);
-				int64_t t1 = esp_timer_get_time();
-				// i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_wf_tw_r, len, &bytes_writen_ch1, portMAX_DELAY);
-				int64_t t2 = esp_timer_get_time();
-				
-				int64_t dt_ch0 = t1 - t0;
-				int64_t dt_ch1 = t2 - t1;
-				int64_t dt_total = t2 - t0;
-				
-				if (dt_ch0 > max_dt_ch0) max_dt_ch0 = dt_ch0;
-				if (dt_ch1 > max_dt_ch1) max_dt_ch1 = dt_ch1;
-				last_item_size = item_size;
-				
-				dbg_iter++;
-				if (dbg_iter >= dbg_period) {
-					ESP_LOGI(I2S_LOG_TAG,
-					                         "sz=%u, dt0=%lld us (max=%lld), dt1=%lld us (max=%lld), diff=%lld us",
-					                         (unsigned)last_item_size,
-					                         (long long)dt_ch0, (long long)max_dt_ch0,
-					                         (long long)dt_ch1, (long long)max_dt_ch1,
-					                         (long long)(t1 - t0));
-					                dbg_iter = 0;
-					                max_dt_ch0 = 0;
-					                max_dt_ch1 = 0;
-									
-					ESP_LOGI(I2S_LOG_TAG,
-					                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
-					                         (unsigned)len,
-					                         (unsigned)bytes_writen_ch0,
-					                         (unsigned)bytes_writen_ch1,
-					                         (bytes_writen_ch0 == len) ? 1 : 0,
-					                         (bytes_writen_ch1 == len) ? 1 : 0);
+				size_t samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
+				if (samples > 0) {
+					dsp_pack_dac_stereo(fdata_l, fdata_l, (int16_t *)data_wf_tw_l, len_bytes);
+					dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_wf_tw_r, len_bytes);
+					
+					size_t bytes_writen_ch0 = 0;
+					size_t bytes_writen_ch1 = 0;
+					
+					int64_t t0 = esp_timer_get_time();
+					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+					int64_t t1 = esp_timer_get_time();
+					i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_wf_tw_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
+					int64_t t2 = esp_timer_get_time();
+					
+					int64_t dt_ch0 = t1 - t0;
+					int64_t dt_ch1 = t2 - t1;
+					
+					if (dt_ch0 > max_dt_ch0) max_dt_ch0 = dt_ch0;
+					if (dt_ch1 > max_dt_ch1) max_dt_ch1 = dt_ch1;
+					last_item_size = item_size;
+					
+					dbg_iter++;
+					if (dbg_iter >= dbg_period) {
+						ESP_LOGI(I2S_LOG_TAG,
+						                         "sz=%u, dt0=%lld us (max=%lld), dt1=%lld us (max=%lld)",
+						                         (unsigned)last_item_size,
+						                         (long long)dt_ch0, (long long)max_dt_ch0,
+						                         (long long)dt_ch1, (long long)max_dt_ch1);
+						                dbg_iter = 0;
+						                max_dt_ch0 = 0;
+						                max_dt_ch1 = 0;
+										
+						ESP_LOGI(I2S_LOG_TAG,
+						                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
+						                         (unsigned)len_bytes,
+						                         (unsigned)bytes_writen_ch0,
+						                         (unsigned)bytes_writen_ch1,
+						                         (bytes_writen_ch0 == len_bytes) ? 1 : 0,
+						                         (bytes_writen_ch1 == len_bytes) ? 1 : 0);
+					}
+				} else {
+					ESP_LOGE(I2S_LOG_TAG, "samples = %d", samples);
 				}
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
