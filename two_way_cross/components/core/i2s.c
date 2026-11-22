@@ -38,6 +38,9 @@ static uint8_t data_out_lpf[4096];
 static uint8_t data_out_hpf[4096];
 static uint8_t data_out_lpf_peaked[4096];
 
+#define MAX_CHUNK 512
+static float fdata_l[MAX_CHUNK], fdata_r[MAX_CHUNK];
+
 static void i2s_task_handler(void *args) {
 
 	uint8_t *data = NULL;
@@ -97,8 +100,11 @@ static void i2s_task_handler(void *args) {
 			if (len > 0 &&
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
-				size_t bytes_writen_0 = 0;
-				size_t bytes_writen_1 = 0;
+
+				size_t bytes_writen_ch0 = 0;
+				size_t bytes_writen_ch1 = 0;
+				
+				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len, MAX_CHUNK);
 				
 				// Audio processing
 				// dsp_mono_downmix(data, item_size);

@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-void dsp_stereo_split_int16(int16_t *data_in, int16_t *data_out_l, int *data_out_r, size_t len, size_t out_samples_block);
-void dsp_stereo_split_float(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t out_samples_block);
+void dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len, size_t max_chunk);
+void dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t max_chunk);
 
 void dsp_init_fir_lpf(u_int8_t step);
 void dsp_init_fir_hpf(u_int8_t step);

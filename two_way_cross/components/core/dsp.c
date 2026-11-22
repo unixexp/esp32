@@ -12,7 +12,6 @@
 
 static const char *DSP_LOG_TAG = "DSP";
 
-#define BLOCK_SAMPLES 512
 static float active_lpf_coeffs[FIR_TAPS];
 static float fir_delay_lpf_l[FIR_TAPS];
 static float fir_delay_lpf_r[FIR_TAPS];
@@ -37,23 +36,58 @@ static float peak_coeffs[5];
 static float peak_delay_line_l[2] = {0.0f, 0.0f};
 static float peak_delay_line_r[2] = {0.0f, 0.0f};
 
-// Converter single channel to int16
+// Pack channels to DAC supported format
 
-void dsp_convert_ch_to_int16(float *ch_data_in, int16_t *ch_data_out, size_t len, size_t out_samples_block) {
-	if (ch_data_in == NULL || ch_data_out == NULL || len < sizeof(int16_t) || out_samples_block == 0) {
+void dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len, size_t max_chunk) {
+	if (data_in_l == NULL || data_in_r == NULL || data_out == NULL ||
+		len < sizeof(int16_t) * 2 || max_chunk == 0) {
 		return;
 	} else {
-		
+		size_t total_samples = len / (sizeof(int16_t) * 2);
+		size_t processed_samples = 0;
+			
+		while (processed_samples < total_samples) {
+			size_t chunk_samples = total_samples - processed_samples;
+			if (chunk_samples > max_chunk) {
+				chunk_samples = max_chunk;
+			}
+			
+			for (size_t i = 0; i < chunk_samples; i++) {
+				float l = data_in_l[i] * 32768.0f;
+				float r = data_in_r[i] * 32768.0f;
+				
+				// int16 overload protection
+				if (l > 32767.0f) {
+					l = 32767.0f;
+				} else if (l < -32768.0f) {
+					l = -32768.0f;
+				}
+
+	            if (r > 32767.0f) {
+					r = 32767.0f;
+				} else if (r < -32768.0f) {
+					r = -32768.0f;
+				}
+				
+				// Record to output data
+				size_t idx = (processed_samples + i) * 2;
+				data_out[idx] = (int16_t)l;
+				data_out[idx + 1] = (int16_t)r;
+			}
+			
+			processed_samples += chunk_samples;
+		}
 	}
 }
 
+// Unpack DAC supported format to separated float channels
 // data_l_out and data_r_out should be initialized with max chunk size:
-// #define OUT_SAMPLES_BLOCK 512
-// static float data_out_l[OUT_SAMPLES_BLOCK], data_out_r[OUT_SAMPLES_BLOCK]
+// #define MAX_CHUNK 512
+// static float data_out_l[MAX_CHUNK], data_out_r[MAX_CHUNK]
 
-void dsp_stereo_split_float(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t out_samples_block) {
+void dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len, size_t max_chunk) {
 	if (data_in == NULL || data_out_l == NULL || data_out_r == NULL ||
-		len < sizeof(int16_t) * 2 || out_samples_block == 0) {
+		len < sizeof(int16_t) * 2 || max_chunk == 0) {
         return;
 	} else {
 		const float scale = 1.0f / 32768.0f;
@@ -62,8 +96,8 @@ void dsp_stereo_split_float(int16_t *data_in, float *data_out_l, float *data_out
 			
 		while (processed_samples < total_samples) {
 			size_t chunk_samples = total_samples - processed_samples;
-			if (chunk_samples > out_samples_block) {
-				chunk_samples = out_samples_block;
+			if (chunk_samples > max_chunk) {
+				chunk_samples = max_chunk;
 			}
 			
 			for (size_t i = 0; i < chunk_samples; i++) {
