@@ -34,12 +34,9 @@ static i2s_channel_t chan1 = {
 	.pinout = I2S_CH1_PINOUT_PCM5102
 };
 
-static uint8_t data_out_lpf[4096];
-static uint8_t data_out_hpf[4096];
-static uint8_t data_out_lpf_peaked[4096];
-
 #define MAX_CHUNK 512
 static float fdata_l[MAX_CHUNK], fdata_r[MAX_CHUNK];
+static uint8_t data_wf_tw_l[4096], data_wf_tw_r[4096];
 
 static void i2s_task_handler(void *args) {
 
@@ -47,23 +44,6 @@ static void i2s_task_handler(void *args) {
 	size_t item_size = 0;
 	
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
-	
-	/*
-	const size_t prefill_chunk = 4096;
-	const int prefill_blocks = 2;
-	uint8_t *zero_buf = (uint8_t *)calloc(1, prefill_chunk);
-	if (zero_buf != NULL &&
-			s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
-			s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
-		for (int i = 0; i < prefill_blocks; i++) {
-		        size_t w0 = 0;
-		        size_t w1 = 0;
-		        i2s_channel_write(s_i2s_cb.chan0->tx_handler, zero_buf, prefill_chunk, &w0, portMAX_DELAY);
-		        i2s_channel_write(s_i2s_cb.chan1->tx_handler, zero_buf, prefill_chunk, &w1, portMAX_DELAY);
-		    }
-		    free(zero_buf);
-	}
-	*/
 	
 	//dsp_init_fir_lpf(0);
 	//dsp_init_fir_hpf(0);
@@ -104,7 +84,8 @@ static void i2s_task_handler(void *args) {
 				size_t bytes_writen_ch0 = 0;
 				size_t bytes_writen_ch1 = 0;
 				
-				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len, MAX_CHUNK);
+				// dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len, MAX_CHUNK);
+				// dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_wf_tw_l, len, MAX_CHUNK);
 				
 				// Audio processing
 				// dsp_mono_downmix(data, item_size);
@@ -116,11 +97,10 @@ static void i2s_task_handler(void *args) {
 				// dsp_adjust_volume(data_out_lpf, item_size, 0.70f);
 				// dsp_adjust_volume(data_out_hpf, item_size, 0.70f);
 				
-				/*
 				int64_t t0 = esp_timer_get_time();
-				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, len, &bytes_writen_0, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data, len, &bytes_writen_ch0, portMAX_DELAY);
 				int64_t t1 = esp_timer_get_time();
-				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data, len, &bytes_writen_1, portMAX_DELAY);
+				// i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_wf_tw_r, len, &bytes_writen_ch1, portMAX_DELAY);
 				int64_t t2 = esp_timer_get_time();
 				
 				int64_t dt_ch0 = t1 - t0;
@@ -146,12 +126,11 @@ static void i2s_task_handler(void *args) {
 					ESP_LOGI(I2S_LOG_TAG,
 					                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
 					                         (unsigned)len,
-					                         (unsigned)bytes_writen_0,
-					                         (unsigned)bytes_writen_1,
-					                         (bytes_writen_0 == len) ? 1 : 0,
-					                         (bytes_writen_1 == len) ? 1 : 0);
+					                         (unsigned)bytes_writen_ch0,
+					                         (unsigned)bytes_writen_ch1,
+					                         (bytes_writen_ch0 == len) ? 1 : 0,
+					                         (bytes_writen_ch1 == len) ? 1 : 0);
 				}
-				*/
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}

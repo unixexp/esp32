@@ -17,8 +17,8 @@ static float fir_delay_lpf_l[FIR_TAPS];
 static float fir_delay_lpf_r[FIR_TAPS];
 static fir_f32_t fir_lpf_l;
 static fir_f32_t fir_lpf_r;
-static float in_lpf_l[BLOCK_SAMPLES], out_lpf_l[BLOCK_SAMPLES];
-static float in_lpf_r[BLOCK_SAMPLES], out_lpf_r[BLOCK_SAMPLES];
+static float in_lpf_l[512], out_lpf_l[512];
+static float in_lpf_r[512], out_lpf_r[512];
 static bool fir_lpf_initialized = false;
 
 static float active_hpf_coeffs[FIR_TAPS];
@@ -26,12 +26,12 @@ static float fir_delay_hpf_l[FIR_TAPS];
 static float fir_delay_hpf_r[FIR_TAPS];
 static fir_f32_t fir_hpf_l;
 static fir_f32_t fir_hpf_r;
-static float in_hpf_l[BLOCK_SAMPLES], out_hpf_l[BLOCK_SAMPLES];
-static float in_hpf_r[BLOCK_SAMPLES], out_hpf_r[BLOCK_SAMPLES];
+static float in_hpf_l[512], out_hpf_l[512];
+static float in_hpf_r[512], out_hpf_r[512];
 static bool fir_hpf_initialized = false;
 
-static float in_peak_l[BLOCK_SAMPLES], out_peak_l[BLOCK_SAMPLES];
-static float in_peak_r[BLOCK_SAMPLES], out_peak_r[BLOCK_SAMPLES];
+static float in_peak_l[512], out_peak_l[512];
+static float in_peak_r[512], out_peak_r[512];
 static float peak_coeffs[5];
 static float peak_delay_line_l[2] = {0.0f, 0.0f};
 static float peak_delay_line_r[2] = {0.0f, 0.0f};
@@ -111,33 +111,41 @@ void dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_
 	}
 }
 
-void dsp_init_fir_lpf(u_int8_t idx) {
+int dsp_init_fir_lpf(uint8_t idx) {
 	size_t size = sizeof(fir_lpf_table) / sizeof(fir_lpf_table[0]);
 	if (size == 0) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR Low Pass instance not initialized. Any coefficients found.");
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR Low Pass instance not initialized. No coefficients found.");
+		return 1;
 	} else if ((size_t)idx >= size) {
 		ESP_LOGE(DSP_LOG_TAG, "DSP FIR Low Pass instance not initialized. Coefficient index outbound.");
-	} else if (!fir_lpf_initialized) {
+		return 2;
+	} else {
+		memset(fir_delay_hpf_l, 0, sizeof(float) * (FIR_TAPS));
+		memset(fir_delay_hpf_r, 0, sizeof(float) * (FIR_TAPS));
 		memcpy(active_lpf_coeffs, fir_lpf_table[idx], sizeof(float) * FIR_TAPS);
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_l, active_lpf_coeffs, fir_delay_lpf_l, FIR_TAPS));
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_lpf_r, active_lpf_coeffs, fir_delay_lpf_r, FIR_TAPS));
-		fir_lpf_initialized = true;
 		ESP_LOGI(DSP_LOG_TAG, "DSP FIR Low Pass instance initialized.");
+		return 0;
 	}
 }
 
-void dsp_init_fir_hpf(u_int8_t idx) {
+int dsp_init_fir_hpf(uint8_t idx) {
 	size_t size = sizeof(fir_hpf_table) / sizeof(fir_hpf_table[0]);
 	if (size == 0) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Any coefficients found.");
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. No coefficients found.");
+		return 1;
 	} else if ((size_t)idx >= size) {
 		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Coefficient index outbound.");
-	} else if (!fir_hpf_initialized) {
+		return 2;
+	} else {
+		memset(fir_delay_hpf_l, 0, sizeof(float) * (FIR_TAPS));
+		memset(fir_delay_hpf_r, 0, sizeof(float) * (FIR_TAPS));
 		memcpy(active_hpf_coeffs, fir_hpf_table[idx], sizeof(float) * FIR_TAPS);
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_l, active_hpf_coeffs, fir_delay_hpf_l, FIR_TAPS));
 		ESP_ERROR_CHECK(dsps_fir_init_f32(&fir_hpf_r, active_hpf_coeffs, fir_delay_hpf_r, FIR_TAPS));
-		fir_hpf_initialized = true;
 		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
+		return 0;
 	}
 }
 
