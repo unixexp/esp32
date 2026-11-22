@@ -15,6 +15,8 @@
 #include "freertos/ringbuf.h"
 #include "portmacro.h"
 #include "dsp.h"
+#include "dsps_fir.h"
+#include "fir_tables.h"
 
 static const char *I2S_LOG_TAG = "I2S";
 static uint32_t s_underflow_cnt = 0;
@@ -38,6 +40,12 @@ static float fdata_l[MAX_SAMPLES], fdata_r[MAX_SAMPLES];
 static uint8_t data_wf_tw_l[MAX_SAMPLES * sizeof(int16_t) * 2];
 static uint8_t data_wf_tw_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 
+static float fdata_wf[MAX_SAMPLES], fdata_tw[MAX_SAMPLES];
+static uint8_t data_wf_tw_mono[MAX_SAMPLES * sizeof(int16_t) * 2];
+
+static fir_f32_t fir_hpf_mono;
+static float fir_delay_hpf_mono[FIR_TAPS];
+
 static void i2s_task_handler(void *args) {
 
 	uint8_t *data = NULL;
@@ -45,10 +53,10 @@ static void i2s_task_handler(void *args) {
 	
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
 	
-	//dsp_init_fir_lpf(0);
-	//dsp_init_fir_hpf(0);
+	// Initialize FIR coefficients
+	dsp_init_fir_ch(&fir_hpf_mono, fir_delay_hpf_mono, 0, &fir_hpf_table, FIR_TAPS);
 	
-	//peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
+	peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
 	
 	// Variables to logging delta time between I2S writes
 	uint32_t dbg_iter = 0;
@@ -81,20 +89,36 @@ static void i2s_task_handler(void *args) {
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
 				
+				// For mono (joined stereo) 2-way system
 				size_t samples = dsp_mono_downmix((int16_t *)data, len_bytes);
 				if (samples == 0) {
 					ESP_LOGE(I2S_LOG_TAG, "dsp_mono_downmix -> samples = %d", samples);
 					return;
 				}
 				
-				samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
+				// For stereo 2-way system
+				// samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
+				
+				// For mono (joined stereo) 2-way system
+				samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_wf, fdata_tw, len_bytes);
 				if (samples > 0) {
-					dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_wf_tw_l, len_bytes);
-					dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_wf_tw_r, len_bytes);
+					// For mono (joined stereo) 2-way system
+					dsp_pack_dac_stereo(fdata_wf, fdata_tw, (int16_t *)data_wf_tw_mono, len_bytes);
+					
+					// For stereo 2-way system
+					// dsp_pack_dac_stereo(fdata_l, fdata_l, (int16_t *)data_wf_tw_l, len_bytes);
+					// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_wf_tw_r, len_bytes);
 					
 					size_t bytes_writen_ch0 = 0;
-					size_t bytes_writen_ch1 = 0;
 					
+					// Remove comment for stereo 2-way system
+					// size_t bytes_writen_ch1 = 0;
+					
+					// For mono (joined stereo) 2-way system
+					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_mono, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+					
+					/*
+					// For stereo 2-way system with logging. TODO: compensate timings
 					int64_t t0 = esp_timer_get_time();
 					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
 					int64_t t1 = esp_timer_get_time();
@@ -127,6 +151,7 @@ static void i2s_task_handler(void *args) {
 						                         (bytes_writen_ch0 == len_bytes) ? 1 : 0,
 						                         (bytes_writen_ch1 == len_bytes) ? 1 : 0);
 					}
+					*/
 				} else {
 					ESP_LOGE(I2S_LOG_TAG, "dsp_unpack_dac_stereo -> samples = %d", samples);
 				}

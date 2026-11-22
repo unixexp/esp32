@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <sys/types.h>
+#include "dsps_fir.h"
 
 #define MAX_SAMPLES 1024
 
@@ -13,13 +14,14 @@ size_t dsp_mono_downmix(int16_t *data, size_t len_bytes);
 size_t dsp_adjust_volume_stereo(int16_t *data, size_t len_bytes, float multiplier);
 size_t dsp_just_copy_stereo(int16_t *data_in, int16_t *data_out, size_t len_bytes);
 
-int dsp_init_fir_lpf(uint8_t idx);
-int dsp_init_fir_hpf(uint8_t idx);
+int dsp_init_fir_ch(fir_f32_t *fir_h, float *fir_delay, uint8_t idx, const float *fir_table, int taps);
+void dsp_cross_fir_hpf_ch(fir_f32_t *fir_h, const float *data_in_ch, float *data_out_ch, size_t len_bytes);
+
+void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db);
+
 /*
-void dsp_adjust_volume(void *data, size_t item_size, float multiplier);
 void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t item_size);
 void dsp_cross_fir_hpf(void *data_in, void *data_out, size_t item_size);
-void dsp_just_copy(void *data_in, void *data_out, size_t item_size);
 void peak_filter(void *data_in, void *data_out, size_t size_bytes);
 */
 
