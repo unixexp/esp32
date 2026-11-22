@@ -39,8 +39,7 @@ static float peak_delay_line_r[2] = {0.0f, 0.0f};
 // Pack channels to DAC supported format
 
 size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len_bytes) {
-	if (data_in_l == NULL || data_in_r == NULL || data_out == NULL ||
-		len_bytes < sizeof(int16_t) * 2) {
+	if (data_in_l == NULL || data_in_r == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
 		return 0;
 	} else {
 		size_t samples = len_bytes / (sizeof(int16_t) * 2);
@@ -79,8 +78,7 @@ size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16
 // static float data_out_l[MAX_SAMPLES], data_out_r[MAX_SAMPLES]
 
 size_t dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len_bytes) {
-	if (data_in == NULL || data_out_l == NULL || data_out_r == NULL ||
-		len_bytes < sizeof(int16_t) * 2) {
+	if (data_in == NULL || data_out_l == NULL || data_out_r == NULL || len_bytes < sizeof(int16_t) * 2) {
         return 0;
 	} else {
 		const float scale = 1.0f / 32768.0f;
@@ -137,13 +135,6 @@ int dsp_init_fir_hpf(uint8_t idx) {
 }
 
 /*
-void dsp_just_copy(void *data_in, void *data_out, size_t size_bytes) {
-	if (data_in == NULL || data_out == NULL || size_bytes == 0) {
-		return;
-	}
-	memcpy(data_out, data_in, size_bytes);
-}
-
 void dsp_cross_fir_lpf(void *data_in, void *data_out, size_t size_bytes) {
 	if (!fir_lpf_initialized) return;
 	if (size_bytes == 0) return;
@@ -341,24 +332,68 @@ void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
 	}
 }
 
-void dsp_adjust_volume(void *data, size_t item_size, float multiplier) {
-	int16_t *samples = (int16_t *)data;
-    int num_samples = item_size / sizeof(int16_t);
-    for (int i = 0; i < num_samples; i++) {
-        samples[i] = (int16_t)(samples[i] * multiplier);
-    }
-}
-
-void dsp_mono_downmix(void *data, size_t item_size) {
-	int16_t *samples = (int16_t *)data;
-    int num_samples = item_size / sizeof(int16_t);
-    for (int i = 0; i < num_samples; i+=2) {
-		int32_t left = samples[i];
-		int32_t right = samples[i+1];
-		int16_t mono_sample = (int16_t)((left + right) / 2);
-        samples[i] = mono_sample;
-		samples[i+1] = mono_sample;
-    }
-}
-
 */
+
+size_t dsp_mono_downmix(int16_t *data, size_t len_bytes) {
+	if (data == NULL || len_bytes < sizeof(int16_t) * 2) {
+		return 0;
+	} else {
+		size_t samples = len_bytes / (sizeof(int16_t) * 2);
+		if (samples > MAX_SAMPLES) {
+			samples = MAX_SAMPLES;
+		}
+		
+		size_t total_int16 = samples * 2; // L and R
+
+		for (size_t i = 0; i < total_int16; i+=2) {
+			int32_t l = data[i];
+			int32_t r = data[i + 1];
+			int16_t mono_sample = (int16_t)((l + r) / 2);
+			data[i] = mono_sample;
+			data[i + 1] = mono_sample;
+		}
+		
+		return samples;
+	}
+}
+
+size_t dsp_adjust_volume_stereo(int16_t *data, size_t len_bytes, float multiplier) {
+	if (data == NULL || len_bytes < sizeof(int16_t) * 2) {
+        return 0;
+	} else {
+		size_t samples = len_bytes / (sizeof(int16_t) * 2);
+		if (samples > MAX_SAMPLES) {
+			samples = MAX_SAMPLES;
+		}
+		
+		size_t total_int16 = samples * 2; // L and R
+		
+		for (size_t i = 0; i < total_int16; i++) {
+			float val = (float)data[i] * multiplier;
+			
+			if (val > 32767.0f) {
+				val = 32767.0f;
+			} else if (val < -32768.0f) {
+				val = -32768.0f;
+			}
+			
+			data[i] = (int16_t)val;
+		}
+		
+		return samples;
+	}
+}
+
+size_t dsp_just_copy_stereo(int16_t *data_in, int16_t *data_out, size_t len_bytes) {
+	if (data_in == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
+		return 0;
+	}
+	size_t stereo_frame_bytes = sizeof(int16_t) * 2;
+	size_t copy_bytes = (len_bytes / stereo_frame_bytes);
+	if (copy_bytes <= 0) {
+		return 0;
+	} else {
+		memcpy(data_out, data_in, copy_bytes);
+		return copy_bytes;
+	}
+}

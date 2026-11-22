@@ -81,7 +81,13 @@ static void i2s_task_handler(void *args) {
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
 				
-				size_t samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
+				size_t samples = dsp_mono_downmix((int16_t *)data, len_bytes);
+				if (samples == 0) {
+					ESP_LOGE(I2S_LOG_TAG, "dsp_mono_downmix -> samples = %d", samples);
+					return;
+				}
+				
+				samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
 				if (samples > 0) {
 					dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_wf_tw_l, len_bytes);
 					dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_wf_tw_r, len_bytes);
@@ -122,7 +128,7 @@ static void i2s_task_handler(void *args) {
 						                         (bytes_writen_ch1 == len_bytes) ? 1 : 0);
 					}
 				} else {
-					ESP_LOGE(I2S_LOG_TAG, "samples = %d", samples);
+					ESP_LOGE(I2S_LOG_TAG, "dsp_unpack_dac_stereo -> samples = %d", samples);
 				}
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
