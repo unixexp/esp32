@@ -83,7 +83,7 @@ static void i2s_task_handler(void *args) {
 				
 				size_t samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
 				if (samples > 0) {
-					dsp_pack_dac_stereo(fdata_l, fdata_l, (int16_t *)data_wf_tw_l, len_bytes);
+					dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_wf_tw_l, len_bytes);
 					dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_wf_tw_r, len_bytes);
 					
 					size_t bytes_writen_ch0 = 0;
