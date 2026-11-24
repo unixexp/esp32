@@ -10,24 +10,13 @@
 
 static const char *DSP_LOG_TAG = "DSP";
 
-static float in_peak_l[512], out_peak_l[512];
-static float in_peak_r[512], out_peak_r[512];
-static float peak_coeffs[5];
-static float peak_delay_line_l[2] = {0.0f, 0.0f};
-static float peak_delay_line_r[2] = {0.0f, 0.0f};
-
 // Pack channels to DAC supported format
 
-size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out, size_t len_bytes) {
-	if (data_in_l == NULL || data_in_r == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
-		return 0;
+void dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16_t *data_out) {
+	if (data_in_l == NULL || data_in_r == NULL || data_out == NULL) {
+		return;
 	} else {
-		size_t samples = len_bytes / (sizeof(int16_t) * 2);
-		if (samples > MAX_SAMPLES) {
-			samples = MAX_SAMPLES;
-		}
-			
-		for (size_t i = 0; i < samples; i++) {
+		for (size_t i = 0; i < MAX_SAMPLES; i++) {
 			float l = data_in_l[i] * 32768.0f;
 			float r = data_in_r[i] * 32768.0f;
 			
@@ -48,8 +37,6 @@ size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16
 			data_out[i * 2] = (int16_t)l;
 			data_out[i * 2 + 1] = (int16_t)r;
 		}
-		
-		return samples;
 	}
 }
 
@@ -57,22 +44,15 @@ size_t dsp_pack_dac_stereo(const float *data_in_l, const float *data_in_r, int16
 // data_l_out and data_r_out should be initialized like:
 // static float data_out_l[MAX_SAMPLES], data_out_r[MAX_SAMPLES]
 
-size_t dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len_bytes) {
+void dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_out_r, size_t len_bytes) {
 	if (data_in == NULL || data_out_l == NULL || data_out_r == NULL || len_bytes < sizeof(int16_t) * 2) {
-        return 0;
+        return;
 	} else {
 		const float scale = 1.0f / 32768.0f;
-		size_t samples = len_bytes / (sizeof(int16_t) * 2);
-		if (samples > MAX_SAMPLES) {
-			samples = MAX_SAMPLES;
-		}
-			
-		for (size_t i = 0; i < samples; i++) {
+		for (size_t i = 0; i < MAX_SAMPLES; i++) {
 			data_out_l[i] = (float)data_in[i * 2] * scale;
 			data_out_r[i] = (float)data_in[i * 2 + 1] * scale;
 		}
-		
-		return samples;
 	}
 }
 
@@ -94,30 +74,19 @@ int dsp_init_fir(fir_f32_t *fir_h, float *fir_delay, float *active_coeffs, const
 	}
 }
 
-void dsp_process_fir(fir_f32_t *fir_h, const float *data_in, float *data_out, size_t len_bytes) {
-	if (fir_h == NULL || data_in == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
+void dsp_process_fir(fir_f32_t *fir_h, const float *data_in, float *data_out) {
+	if (fir_h == NULL || data_in == NULL || data_out == NULL) {
 		return;
-	} else {
-		size_t samples = len_bytes / (sizeof(int16_t) * 2);
-		if (samples > MAX_SAMPLES) {
-			samples = MAX_SAMPLES;
-		}
-		
-		dsps_fir_f32(fir_h, data_in, data_out, (int) samples);	
+	} else {		
+		dsps_fir_f32(fir_h, data_in, data_out, MAX_SAMPLES);	
 	}
 }
 
-size_t dsp_mono_downmix(int16_t *data, size_t len_bytes) {
-	if (data == NULL || len_bytes < sizeof(int16_t) * 2) {
-		return 0;
+void dsp_mono_downmix(int16_t *data) {
+	if (data == NULL) {
+		return;
 	} else {
-		size_t samples = len_bytes / (sizeof(int16_t) * 2);
-		if (samples > MAX_SAMPLES) {
-			samples = MAX_SAMPLES;
-		}
-		
-		size_t total_int16 = samples * 2; // L and R
-
+		size_t total_int16 = MAX_SAMPLES * 2; // L and R
 		for (size_t i = 0; i < total_int16; i+=2) {
 			int32_t l = data[i];
 			int32_t r = data[i + 1];
@@ -125,8 +94,6 @@ size_t dsp_mono_downmix(int16_t *data, size_t len_bytes) {
 			data[i] = mono_sample;
 			data[i + 1] = mono_sample;
 		}
-		
-		return samples;
 	}
 }
 
@@ -171,7 +138,7 @@ size_t dsp_just_copy_stereo(int16_t *data_in, int16_t *data_out, size_t len_byte
 	}
 }
 
-void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db) {
+void dsp_init_biquad(double fs, double f0, double q, double gain_db, float *coeffs, float *biquad_delay) {
     double A = pow(10.0, gain_db / 40.0);
     double w0 = 2.0 * M_PI * f0 / fs;
     double sin_w0 = sin(w0);
@@ -185,71 +152,21 @@ void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db) {
     double a1 = -2.0 * cos_w0;
     double a2 = 1.0 - alpha / A;
 
-    peak_coeffs[0] = (float)(b0 / a0);
-    peak_coeffs[1] = (float)(b1 / a0);
-    peak_coeffs[2] = (float)(b2 / a0);
-    peak_coeffs[3] = (float)(a1 / a0);
-    peak_coeffs[4] = (float)(a2 / a0);
+    coeffs[0] = (float)(b0 / a0);
+    coeffs[1] = (float)(b1 / a0);
+    coeffs[2] = (float)(b2 / a0);
+    coeffs[3] = (float)(a1 / a0);
+    coeffs[4] = (float)(a2 / a0);
 
-    peak_delay_line_l[0] = 0.0f; peak_delay_line_l[1] = 0.0f;
-    peak_delay_line_r[0] = 0.0f; peak_delay_line_r[1] = 0.0f;
+    biquad_delay[0] = 0.0f; biquad_delay[1] = 0.0f;
 }
 
-/*
-void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
-	if (size_bytes == 0) return;
-	
-	const int16_t *samples_in = (int16_t *)data_in;
-	int16_t *samples_out = (int16_t *)data_out;
-	
-	// Summary count of stereo-pairs (one channel - 2 byte, one pair - 4 byte)
-	size_t total_samples = size_bytes / (sizeof(int16_t) * 2);
-	size_t processed_samples = 0;
-	
-	while (processed_samples < total_samples) {
-		size_t chunk_samples = total_samples - processed_samples;
-		if (chunk_samples > BLOCK_SAMPLES) {
-			chunk_samples = BLOCK_SAMPLES;
-		}
-		
-		// Deinterleaving input data of stereo pairs
-		for (size_t i = 0; i < chunk_samples; i++) {
-			size_t idx = (processed_samples + i) * 2;
-			in_peak_l[i] = (float)samples_in[idx] / 32768.0f;
-			in_peak_r[i] = (float)samples_in[idx + 1] / 32768.0f;
-		}
-		
-		// Accept filter
-		dsps_biquad_f32(in_peak_l, out_peak_l, chunk_samples, peak_coeffs, peak_delay_line_l);
-		dsps_biquad_f32(in_peak_r, out_peak_r, chunk_samples, peak_coeffs, peak_delay_line_r);
-		
-		// Interleaving to stereo pairs and record to output data
-		for (size_t i = 0; i < chunk_samples; i++) {
-			float l = out_peak_l[i] * 32768.0f;
-			float r = out_peak_r[i] * 32768.0f;
-			
-			// int16 overload protection
-			if (l > 32767.0f) {
-				l = 32767.0f;
-			} else if (l < -32768.0f) {
-				l = -32768.0f;
-			}
 
-            if (r > 32767.0f) {
-				r = 32767.0f;
-			} else if (r < -32768.0f) {
-				r = -32768.0f;
-			}
-			
-			// Record to output data
-			size_t idx = (processed_samples + i) * 2;
-			samples_out[idx] = (int16_t)l;
-			samples_out[idx + 1] = (int16_t)r;
-		}
-		
-		processed_samples += chunk_samples;
+void dsp_process_biquad(const float *data_in, float *data_out, float *biquad_delay, float *coeffs) {
+	if (data_in == NULL || data_out == NULL || biquad_delay == NULL || coeffs == NULL) {
+		return;
+	} else {
+		dsps_biquad_f32(data_in, data_out, MAX_SAMPLES, coeffs, biquad_delay);
 	}
 }
-
-*/
 

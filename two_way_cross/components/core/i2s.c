@@ -97,74 +97,62 @@ static void i2s_task_handler(void *args) {
 			if (len_bytes > 0 &&
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
-				
-				size_t samples = 0;
 
+				// dsp_mono_downmix((int16_t *)data);
+
+				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
+
+				dsp_process_fir(&fir_lpf_l, fdata_l, fdata_wf_l);
+				dsp_process_fir(&fir_hpf_l, fdata_l, fdata_tw_l);
+				dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r);
+				dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r);
+				dsp_pack_dac_stereo(fdata_wf_l, fdata_tw_l, (int16_t *)data_out_l);
+				dsp_pack_dac_stereo(fdata_wf_r, fdata_tw_r, (int16_t *)data_out_r);
+				
+				// Remove comment for play reference
+				// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_out_r, len_bytes);
+				
+				bytes_writen_ch0 = 0;
+				bytes_writen_ch1 = 0;
+				
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
+				
 				/*
-				samples = dsp_mono_downmix((int16_t *)data, len_bytes);
-				if (samples == 0) {
-					ESP_LOGE(I2S_LOG_TAG, "dsp_mono_downmix -> samples = %d", samples);
-					return;
+				// For stereo 2-way system with logging. TODO: compensate timings
+				int64_t t0 = esp_timer_get_time();
+				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+				int64_t t1 = esp_timer_get_time();
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_wf_tw_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
+				int64_t t2 = esp_timer_get_time();
+				
+				int64_t dt_ch0 = t1 - t0;
+				int64_t dt_ch1 = t2 - t1;
+				
+				if (dt_ch0 > max_dt_ch0) max_dt_ch0 = dt_ch0;
+				if (dt_ch1 > max_dt_ch1) max_dt_ch1 = dt_ch1;
+				last_item_size = item_size;
+				
+				dbg_iter++;
+				if (dbg_iter >= dbg_period) {
+					ESP_LOGI(I2S_LOG_TAG,
+					                         "sz=%u, dt0=%lld us (max=%lld), dt1=%lld us (max=%lld)",
+					                         (unsigned)last_item_size,
+					                         (long long)dt_ch0, (long long)max_dt_ch0,
+					                         (long long)dt_ch1, (long long)max_dt_ch1);
+					                dbg_iter = 0;
+					                max_dt_ch0 = 0;
+					                max_dt_ch1 = 0;
+									
+					ESP_LOGI(I2S_LOG_TAG,
+					                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
+					                         (unsigned)len_bytes,
+					                         (unsigned)bytes_writen_ch0,
+					                         (unsigned)bytes_writen_ch1,
+					                         (bytes_writen_ch0 == len_bytes) ? 1 : 0,
+					                         (bytes_writen_ch1 == len_bytes) ? 1 : 0);
 				}
 				*/
-
-				samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
-				
-				if (samples > 0) {
-					dsp_process_fir(&fir_lpf_l, fdata_l, fdata_wf_l, len_bytes);
-					dsp_process_fir(&fir_hpf_l, fdata_l, fdata_tw_l, len_bytes);
-					dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r, len_bytes);
-					dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r, len_bytes);
-					dsp_pack_dac_stereo(fdata_wf_l, fdata_tw_l, (int16_t *)data_out_l, len_bytes);
-					dsp_pack_dac_stereo(fdata_wf_r, fdata_tw_r, (int16_t *)data_out_r, len_bytes);
-					
-					// Remove comment for play reference
-					// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_out_r, len_bytes);
-					
-					bytes_writen_ch0 = 0;
-					bytes_writen_ch1 = 0;
-					
-					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
-					i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
-					
-					/*
-					// For stereo 2-way system with logging. TODO: compensate timings
-					int64_t t0 = esp_timer_get_time();
-					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_wf_tw_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
-					int64_t t1 = esp_timer_get_time();
-					i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_wf_tw_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
-					int64_t t2 = esp_timer_get_time();
-					
-					int64_t dt_ch0 = t1 - t0;
-					int64_t dt_ch1 = t2 - t1;
-					
-					if (dt_ch0 > max_dt_ch0) max_dt_ch0 = dt_ch0;
-					if (dt_ch1 > max_dt_ch1) max_dt_ch1 = dt_ch1;
-					last_item_size = item_size;
-					
-					dbg_iter++;
-					if (dbg_iter >= dbg_period) {
-						ESP_LOGI(I2S_LOG_TAG,
-						                         "sz=%u, dt0=%lld us (max=%lld), dt1=%lld us (max=%lld)",
-						                         (unsigned)last_item_size,
-						                         (long long)dt_ch0, (long long)max_dt_ch0,
-						                         (long long)dt_ch1, (long long)max_dt_ch1);
-						                dbg_iter = 0;
-						                max_dt_ch0 = 0;
-						                max_dt_ch1 = 0;
-										
-						ESP_LOGI(I2S_LOG_TAG,
-						                         "len=%u, w0=%u, w1=%u, match0=%d, match1=%d",
-						                         (unsigned)len_bytes,
-						                         (unsigned)bytes_writen_ch0,
-						                         (unsigned)bytes_writen_ch1,
-						                         (bytes_writen_ch0 == len_bytes) ? 1 : 0,
-						                         (bytes_writen_ch1 == len_bytes) ? 1 : 0);
-					}
-					*/
-				} else {
-					ESP_LOGE(I2S_LOG_TAG, "dsp_unpack_dac_stereo -> samples = %d", samples);
-				}
 			} else {
 				vTaskDelay(pdMS_TO_TICKS(10));
 			}
