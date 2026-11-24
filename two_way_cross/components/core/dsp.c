@@ -76,16 +76,21 @@ size_t dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_ou
 	}
 }
 
-int dsp_init_fir(fir_f32_t *fir_h, float *fir_delay, const float *coeffs, size_t taps) {
-	if (coeffs == NULL || taps == 0) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. No coefficients found.");
+int dsp_init_fir(fir_f32_t *fir_h, float *fir_delay, float *active_coeffs, const float *coeffs, size_t taps) {
+	if (fir_h == NULL || fir_delay == NULL || active_coeffs == NULL || coeffs == NULL || taps == 0) {
+		ESP_LOGE(DSP_LOG_TAG, "DSP FIR instance not initialized. Invalid params.");
 		return 1;
 	} else {
 		memset(fir_delay, 0, sizeof(float) * taps);
-		memcpy(active_hpf_coeffs, coeffs, sizeof(float) * taps);
-		ESP_ERROR_CHECK(dsps_fir_init_f32(fir_h, coeffs, fir_delay, taps));
-		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
-		return 0;
+		memcpy(active_coeffs, coeffs, sizeof(float) * taps);
+		esp_err_t err = dsps_fir_init_f32(fir_h, active_coeffs, fir_delay, taps);
+		if (err != ESP_OK) {
+			ESP_LOGE(DSP_LOG_TAG, "dsps_fir_init_f32 failed: %s", esp_err_to_name(err));
+			return 2;
+		} else {
+			ESP_LOGI(DSP_LOG_TAG, "DSP FIR instance initialized.");
+		    return 0;	
+		}
 	}
 }
 
@@ -93,7 +98,12 @@ void dsp_process_fir(fir_f32_t *fir_h, const float *data_in, float *data_out, si
 	if (fir_h == NULL || data_in == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
 		return;
 	} else {
-		dsps_fir_f32(fir_h, data_in, data_out, len_bytes);	
+		size_t samples = len_bytes / (sizeof(int16_t) * 2);
+		if (samples > MAX_SAMPLES) {
+			samples = MAX_SAMPLES;
+		}
+		
+		dsps_fir_f32(fir_h, data_in, data_out, (int) samples);	
 	}
 }
 
