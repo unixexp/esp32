@@ -118,6 +118,13 @@ static void i2s_task_handler(void *args) {
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
 				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
 				
+				dbg_iter++;
+				if (dbg_iter >= dbg_period) {
+					dbg_iter = 0;
+					stack_free = uxTaskGetStackHighWaterMark(NULL);
+					ESP_LOGI(I2S_LOG_TAG, "BtI2STask free stack min: %u bytes", (unsigned)stack_free);
+				}
+				
 				/*
 				// For stereo 2-way system with logging. TODO: compensate timings
 				int64_t t0 = esp_timer_get_time();
