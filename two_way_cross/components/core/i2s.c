@@ -36,21 +36,31 @@ static i2s_channel_t chan1 = {
 };
 
 static float fdata_l[MAX_SAMPLES], fdata_r[MAX_SAMPLES];
-static uint8_t data_out[MAX_SAMPLES * sizeof(int16_t) * 2];
+static float fdata_wf_l[MAX_SAMPLES], fdata_tw_l[MAX_SAMPLES];
+static float fdata_wf_r[MAX_SAMPLES], fdata_tw_r[MAX_SAMPLES];
+static uint8_t data_out_l[MAX_SAMPLES * sizeof(int16_t) * 2];
+static uint8_t data_out_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 
 static void i2s_task_handler(void *args) {
 
 	uint8_t *data = NULL;
 	size_t item_size = 0;
+	size_t bytes_writen_ch0 = 0;
+	size_t bytes_writen_ch1 = 0;
 	
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
 	
 	// Initialize FIR coefficients
-	fir_f32_t fir_hpf, fir_lpf;
-	float fir_delay_hpf[FIR_TAPS], fir_delay_lpf[FIR_TAPS];
-	float active_hpf_coeffs[FIR_TAPS], active_lpf_coeffs[FIR_TAPS];
-	dsp_init_fir(&fir_hpf, fir_delay_hpf, active_hpf_coeffs, fir_hpf_table[0], FIR_TAPS);
-	dsp_init_fir(&fir_lpf, fir_delay_lpf, active_lpf_coeffs, fir_lpf_table[0], FIR_TAPS);
+	fir_f32_t fir_hpf_l, fir_lpf_l;
+	fir_f32_t fir_hpf_r, fir_lpf_r;
+	float fir_delay_hpf_l[FIR_TAPS], fir_delay_lpf_l[FIR_TAPS];
+	float fir_delay_hpf_r[FIR_TAPS], fir_delay_lpf_r[FIR_TAPS];
+	float active_hpf_coeffs_l[FIR_TAPS], active_lpf_coeffs_l[FIR_TAPS];
+	float active_hpf_coeffs_r[FIR_TAPS], active_lpf_coeffs_r[FIR_TAPS];
+	dsp_init_fir(&fir_hpf_l, fir_delay_hpf_l, active_hpf_coeffs_l, fir_hpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_lpf_l, fir_delay_lpf_l, active_lpf_coeffs_l, fir_lpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_hpf_r, fir_delay_hpf_r, active_hpf_coeffs_r, fir_hpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_lpf_r, fir_delay_lpf_r, active_lpf_coeffs_r, fir_lpf_table[0], FIR_TAPS);
 	
 	// peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
 	
@@ -61,6 +71,9 @@ static void i2s_task_handler(void *args) {
 	size_t last_item_size = 0;
 	const uint32_t dbg_period = 200;
 	// Variables to logging delta time between I2S writes END
+	
+	UBaseType_t stack_free = uxTaskGetStackHighWaterMark(NULL);
+	ESP_LOGI(I2S_LOG_TAG, "BtI2STask free stack min: %u bytes", (unsigned)stack_free);
 	
 	for (;;) {
 		if (s_i2s_cb.ring_buf_mode == RINGBUFFER_MODE_PREFETCHING) {
@@ -98,13 +111,21 @@ static void i2s_task_handler(void *args) {
 				samples = dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
 				
 				if (samples > 0) {
-					// dsp_process_fir(&fir_lpf, fdata_wf, fdata_wf_lpf, len_bytes);
-					// dsp_process_fir(&fir_hpf, fdata_tw, fdata_tw_hpf, len_bytes);
-					dsp_pack_dac_stereo(fdata_l, fdata_r, (int16_t *)data_out, len_bytes);
+					dsp_process_fir(&fir_lpf_l, fdata_l, fdata_wf_l, len_bytes);
+					dsp_process_fir(&fir_hpf_l, fdata_l, fdata_tw_l, len_bytes);
+					dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r, len_bytes);
+					dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r, len_bytes);
+					dsp_pack_dac_stereo(fdata_wf_l, fdata_tw_l, (int16_t *)data_out_l, len_bytes);
+					dsp_pack_dac_stereo(fdata_wf_r, fdata_tw_r, (int16_t *)data_out_r, len_bytes);
 					
-					size_t bytes_writen_ch0 = 0;
+					// Remove comment for play reference
+					// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_out_r, len_bytes);
 					
-					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+					bytes_writen_ch0 = 0;
+					bytes_writen_ch1 = 0;
+					
+					i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
+					i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
 					
 					/*
 					// For stereo 2-way system with logging. TODO: compensate timings
@@ -227,15 +248,26 @@ void start_i2s(void) {
 		}
     }
     if (s_i2s_cb.write_task_handle == NULL) {
-        if (xTaskCreatePinnedToCore(i2s_task_handler, "BtI2STask", 4 * 1024, NULL, 5, &s_i2s_cb.write_task_handle, 1) != pdPASS) {
+		size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+		size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+		ESP_LOGI(I2S_LOG_TAG, "Free internal RAM: %u bytes, largest block: %u bytes before create i2s_task_handler",
+		         (unsigned)free_internal, (unsigned)largest_block);
+
+        if (xTaskCreatePinnedToCore(i2s_task_handler, "BtI2STask", 8 * 1024, NULL, 5, &s_i2s_cb.write_task_handle, 1) != pdPASS) {
             ESP_LOGE(I2S_LOG_TAG, "%s, Task create failed", __func__);
-            
+			
 			if (s_i2s_cb.write_task_handle != NULL) {
 				vTaskDelete(s_i2s_cb.write_task_handle);
 				s_i2s_cb.write_task_handle = NULL;	
 			}
 
-        }
+        } else {
+			size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+			size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+			ESP_LOGI(I2S_LOG_TAG, "Free internal RAM: %u bytes, largest block: %u bytes after create i2s_task_handler",
+			         (unsigned)free_internal, (unsigned)largest_block);
+		}
     }
 }
 
