@@ -15,7 +15,6 @@
 #include "freertos/ringbuf.h"
 #include "portmacro.h"
 #include "dsp.h"
-#include "dsps_fir.h"
 #include "fir_tables.h"
 
 static const char *I2S_LOG_TAG = "I2S";
@@ -43,9 +42,6 @@ static uint8_t data_wf_tw_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 static float fdata_wf[MAX_SAMPLES], fdata_tw[MAX_SAMPLES];
 static uint8_t data_wf_tw_mono[MAX_SAMPLES * sizeof(int16_t) * 2];
 
-static fir_f32_t fir_hpf_mono;
-static float fir_delay_hpf_mono[FIR_TAPS];
-
 static void i2s_task_handler(void *args) {
 
 	uint8_t *data = NULL;
@@ -54,9 +50,11 @@ static void i2s_task_handler(void *args) {
 	ESP_LOGI(I2S_LOG_TAG, "Task handler started.");
 	
 	// Initialize FIR coefficients
-	dsp_init_fir_ch(&fir_hpf_mono, fir_delay_hpf_mono, 0, &fir_hpf_table, FIR_TAPS);
+	fir_f32_t fir_hpf_mono;
+	float fir_delay_hpf[FIR_TAPS];
+	dsp_init_fir(&fir_hpf_mono, fir_delay_hpf, &fir_hpf_table[0], FIR_TAPS);
 	
-	peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
+	// peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
 	
 	// Variables to logging delta time between I2S writes
 	uint32_t dbg_iter = 0;

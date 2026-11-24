@@ -76,28 +76,24 @@ size_t dsp_unpack_dac_stereo(int16_t *data_in, float *data_out_l, float *data_ou
 	}
 }
 
-int dsp_init_fir_ch(fir_f32_t *fir_h, float *fir_delay, uint8_t idx, const float *fir_table, int taps) {
-	size_t size = sizeof(fir_table) / sizeof(fir_table[0]);
-	if (size == 0) {
+int dsp_init_fir(fir_f32_t *fir_h, float *fir_delay, const float *coeffs, size_t taps) {
+	if (coeffs == NULL || taps == 0) {
 		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. No coefficients found.");
 		return 1;
-	} else if ((size_t)idx >= size) {
-		ESP_LOGE(DSP_LOG_TAG, "DSP FIR High Pass instance not initialized. Coefficient index outbound.");
-		return 2;
 	} else {
 		memset(fir_delay, 0, sizeof(float) * taps);
-		memcpy(active_hpf_coeffs, fir_table[idx], sizeof(float) * taps);
-		ESP_ERROR_CHECK(dsps_fir_init_f32(fir_h, active_hpf_coeffs, fir_delay, taps));
+		memcpy(active_hpf_coeffs, coeffs, sizeof(float) * taps);
+		ESP_ERROR_CHECK(dsps_fir_init_f32(fir_h, coeffs, fir_delay, taps));
 		ESP_LOGI(DSP_LOG_TAG, "DSP FIR High Pass instance initialized.");
 		return 0;
 	}
 }
 
-void dsp_cross_fir_hpf_ch(fir_f32_t *fir_h, const float *data_in_ch, float *data_out_ch, size_t len_bytes) {
-	if (fir_h == NULL || data_in_ch == NULL || data_out_ch == NULL || len_bytes < sizeof(int16_t) * 2) {
+void dsp_process_fir(fir_f32_t *fir_h, const float *data_in, float *data_out, size_t len_bytes) {
+	if (fir_h == NULL || data_in == NULL || data_out == NULL || len_bytes < sizeof(int16_t) * 2) {
 		return;
 	} else {
-		dsps_fir_f32(fir_h, data_in_ch, data_out_ch, len_bytes);	
+		dsps_fir_f32(fir_h, data_in, data_out, len_bytes);	
 	}
 }
 
@@ -165,6 +161,30 @@ size_t dsp_just_copy_stereo(int16_t *data_in, int16_t *data_out, size_t len_byte
 	}
 }
 
+void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db) {
+    double A = pow(10.0, gain_db / 40.0);
+    double w0 = 2.0 * M_PI * f0 / fs;
+    double sin_w0 = sin(w0);
+    double cos_w0 = cos(w0);
+    double alpha = sin_w0 / (2.0 * q);
+
+    double b0 = 1.0 + alpha * A;
+    double b1 = -2.0 * cos_w0;
+    double b2 = 1.0 - alpha * A;
+    double a0 = 1.0 + alpha / A;
+    double a1 = -2.0 * cos_w0;
+    double a2 = 1.0 - alpha / A;
+
+    peak_coeffs[0] = (float)(b0 / a0);
+    peak_coeffs[1] = (float)(b1 / a0);
+    peak_coeffs[2] = (float)(b2 / a0);
+    peak_coeffs[3] = (float)(a1 / a0);
+    peak_coeffs[4] = (float)(a2 / a0);
+
+    peak_delay_line_l[0] = 0.0f; peak_delay_line_l[1] = 0.0f;
+    peak_delay_line_r[0] = 0.0f; peak_delay_line_r[1] = 0.0f;
+}
+
 /*
 void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
 	if (size_bytes == 0) return;
@@ -223,26 +243,3 @@ void peak_filter(void *data_in, void *data_out, size_t size_bytes) {
 
 */
 
-void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db) {
-    double A = pow(10.0, gain_db / 40.0);
-    double w0 = 2.0 * M_PI * f0 / fs;
-    double sin_w0 = sin(w0);
-    double cos_w0 = cos(w0);
-    double alpha = sin_w0 / (2.0 * q);
-
-    double b0 = 1.0 + alpha * A;
-    double b1 = -2.0 * cos_w0;
-    double b2 = 1.0 - alpha * A;
-    double a0 = 1.0 + alpha / A;
-    double a1 = -2.0 * cos_w0;
-    double a2 = 1.0 - alpha / A;
-
-    peak_coeffs[0] = (float)(b0 / a0);
-    peak_coeffs[1] = (float)(b1 / a0);
-    peak_coeffs[2] = (float)(b2 / a0);
-    peak_coeffs[3] = (float)(a1 / a0);
-    peak_coeffs[4] = (float)(a2 / a0);
-
-    peak_delay_line_l[0] = 0.0f; peak_delay_line_l[1] = 0.0f;
-    peak_delay_line_r[0] = 0.0f; peak_delay_line_r[1] = 0.0f;
-}

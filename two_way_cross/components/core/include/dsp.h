@@ -14,8 +14,8 @@ size_t dsp_mono_downmix(int16_t *data, size_t len_bytes);
 size_t dsp_adjust_volume_stereo(int16_t *data, size_t len_bytes, float multiplier);
 size_t dsp_just_copy_stereo(int16_t *data_in, int16_t *data_out, size_t len_bytes);
 
-int dsp_init_fir_ch(fir_f32_t *fir_h, float *fir_delay, uint8_t idx, const float *fir_table, int taps);
-void dsp_cross_fir_hpf_ch(fir_f32_t *fir_h, const float *data_in_ch, float *data_out_ch, size_t len_bytes);
+int dsp_init_fir(fir_f32_t *fir_h, float *fir_delay, float *coeffs, size_t taps);
+void dsp_process_fir(fir_f32_t *fir_h, const float *data_in, float *data_out, size_t len_bytes);
 
 void peak_filter_init_coeffs(double fs, double f0, double q, double gain_db);
 
