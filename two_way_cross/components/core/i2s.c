@@ -16,6 +16,7 @@
 #include "portmacro.h"
 #include "dsp.h"
 #include "fir_tables.h"
+#include "esp_clk_tree.h"
 
 static const char *I2S_LOG_TAG = "I2S";
 static uint32_t s_underflow_cnt = 0;
@@ -44,6 +45,10 @@ static uint8_t data_out_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 
 static void i2s_task_handler(void *args) {
 
+	uint32_t cpu_freq_hz = 0;
+	esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU, ESP_CLK_TREE_SRC_FREQ_PRECISION_EXACT, &cpu_freq_hz);
+	ESP_LOGI("SYS", "Current CPU Frequency: %lu MHz", cpu_freq_hz / 1000000);
+	
 	uint8_t *data = NULL;
 	size_t item_size = 0;
 	size_t bytes_writen_ch0 = 0;
@@ -54,14 +59,17 @@ static void i2s_task_handler(void *args) {
 	// Initialize FIR coefficients
 	fir_f32_t fir_hpf_l, fir_lpf_l;
 	fir_f32_t fir_hpf_r, fir_lpf_r;
-	float fir_delay_hpf_l[FIR_TAPS], fir_delay_lpf_l[FIR_TAPS];
-	float fir_delay_hpf_r[FIR_TAPS], fir_delay_lpf_r[FIR_TAPS];
-	float active_hpf_coeffs_l[FIR_TAPS], active_lpf_coeffs_l[FIR_TAPS];
-	float active_hpf_coeffs_r[FIR_TAPS], active_lpf_coeffs_r[FIR_TAPS];
-	dsp_init_fir(&fir_hpf_l, fir_delay_hpf_l, active_hpf_coeffs_l, fir_hpf_table[0], FIR_TAPS);
-	dsp_init_fir(&fir_lpf_l, fir_delay_lpf_l, active_lpf_coeffs_l, fir_lpf_table[0], FIR_TAPS);
-	dsp_init_fir(&fir_hpf_r, fir_delay_hpf_r, active_hpf_coeffs_r, fir_hpf_table[0], FIR_TAPS);
-	dsp_init_fir(&fir_lpf_r, fir_delay_lpf_r, active_lpf_coeffs_r, fir_lpf_table[0], FIR_TAPS);
+	static float __attribute__((aligned(16))) fir_delay_hpf_l[FIR_TAPS];
+	static float __attribute__((aligned(16))) fir_delay_lpf_l[FIR_TAPS];
+	static float __attribute__((aligned(16))) fir_delay_hpf_r[FIR_TAPS];
+	static float __attribute__((aligned(16))) fir_delay_lpf_r[FIR_TAPS];
+	
+	static float __attribute__((aligned(16))) active_hpf_coeffs[FIR_TAPS];
+	static float __attribute__((aligned(16))) active_lpf_coeffs[FIR_TAPS];
+	dsp_init_fir(&fir_hpf_l, fir_delay_hpf_l, active_hpf_coeffs, fir_hpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_lpf_l, fir_delay_lpf_l, active_lpf_coeffs, fir_lpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_hpf_r, fir_delay_hpf_r, active_hpf_coeffs, fir_hpf_table[0], FIR_TAPS);
+	dsp_init_fir(&fir_lpf_r, fir_delay_lpf_r, active_lpf_coeffs, fir_lpf_table[0], FIR_TAPS);
 	
 	float biquad_coeffs_wf_l[5];
 	float biquad_coeffs_wf_r[5];
@@ -110,14 +118,14 @@ static void i2s_task_handler(void *args) {
 				
 				dsp_process_fir(&fir_lpf_l, fdata_l, fdata_wf_l);
 				dsp_process_fir(&fir_hpf_l, fdata_l, fdata_tw_l);
-				dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r);
-				dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r);
+				// dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r);
+				// dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r);
 				
 				dsp_process_biquad(fdata_wf_l, fdata_wf_pk_l, biquad_delay_line_l, biquad_coeffs_wf_l);
-				dsp_process_biquad(fdata_wf_r, fdata_wf_pk_r, biquad_delay_line_r, biquad_coeffs_wf_r);
+				// dsp_process_biquad(fdata_wf_r, fdata_wf_pk_r, biquad_delay_line_r, biquad_coeffs_wf_r);
 				
 				dsp_pack_dac_stereo(fdata_wf_pk_l, fdata_tw_l, (int16_t *)data_out_l);
-				dsp_pack_dac_stereo(fdata_wf_pk_r, fdata_tw_r, (int16_t *)data_out_r);
+				// dsp_pack_dac_stereo(fdata_wf_pk_r, fdata_tw_r, (int16_t *)data_out_r);
 				
 				// Remove comment for play reference
 				// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_out_r, len_bytes);
@@ -126,14 +134,16 @@ static void i2s_task_handler(void *args) {
 				bytes_writen_ch1 = 0;
 				
 				i2s_channel_write(s_i2s_cb.chan0->tx_handler, data_out_l, len_bytes, &bytes_writen_ch0, portMAX_DELAY);
-				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_r, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
+				i2s_channel_write(s_i2s_cb.chan1->tx_handler, data_out_l, len_bytes, &bytes_writen_ch1, portMAX_DELAY);
 				
+				/*
 				dbg_iter++;
 				if (dbg_iter >= dbg_period) {
 					dbg_iter = 0;
 					stack_free = uxTaskGetStackHighWaterMark(NULL);
 					ESP_LOGI(I2S_LOG_TAG, "BtI2STask free stack min: %u bytes", (unsigned)stack_free);
 				}
+				*/
 				
 				/*
 				// For stereo 2-way system with logging. TODO: compensate timings
