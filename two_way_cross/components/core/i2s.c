@@ -104,7 +104,7 @@ static void i2s_task_handler(void *args) {
 					s_i2s_cb.chan0->state == CHANNEL_STATUS_ENABLED &&
 					s_i2s_cb.chan1->state == CHANNEL_STATUS_ENABLED) {
 
-				// dsp_mono_downmix((int16_t *)data);
+				dsp_mono_downmix((int16_t *)data);
 
 				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
 				
