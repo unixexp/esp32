@@ -38,6 +38,7 @@ static i2s_channel_t chan1 = {
 static float fdata_l[MAX_SAMPLES], fdata_r[MAX_SAMPLES];
 static float fdata_wf_l[MAX_SAMPLES], fdata_tw_l[MAX_SAMPLES];
 static float fdata_wf_r[MAX_SAMPLES], fdata_tw_r[MAX_SAMPLES];
+static float fdata_wf_pk_l[MAX_SAMPLES], fdata_wf_pk_r[MAX_SAMPLES];
 static uint8_t data_out_l[MAX_SAMPLES * sizeof(int16_t) * 2];
 static uint8_t data_out_r[MAX_SAMPLES * sizeof(int16_t) * 2];
 
@@ -62,8 +63,12 @@ static void i2s_task_handler(void *args) {
 	dsp_init_fir(&fir_hpf_r, fir_delay_hpf_r, active_hpf_coeffs_r, fir_hpf_table[0], FIR_TAPS);
 	dsp_init_fir(&fir_lpf_r, fir_delay_lpf_r, active_lpf_coeffs_r, fir_lpf_table[0], FIR_TAPS);
 	
-	
-	//dsp_init_biquad(44100.0f, 160.0f, 1.8f, -8.0f, )
+	float biquad_coeffs_wf_l[5];
+	float biquad_coeffs_wf_r[5];
+	float biquad_delay_line_l[2] = {0.0f, 0.0f};
+	float biquad_delay_line_r[2] = {0.0f, 0.0f};
+	dsp_init_biquad(44100.0f, 160.0f, 1.8f, -8.0f, biquad_coeffs_wf_l, biquad_delay_line_l);
+	dsp_init_biquad(44100.0f, 160.0f, 1.8f, -8.0f, biquad_coeffs_wf_r, biquad_delay_line_r);
 	
 	// Variables to logging delta time between I2S writes
 	uint32_t dbg_iter = 0;
@@ -102,13 +107,17 @@ static void i2s_task_handler(void *args) {
 				// dsp_mono_downmix((int16_t *)data);
 
 				dsp_unpack_dac_stereo((int16_t *)data, fdata_l, fdata_r, len_bytes);
-
+				
 				dsp_process_fir(&fir_lpf_l, fdata_l, fdata_wf_l);
 				dsp_process_fir(&fir_hpf_l, fdata_l, fdata_tw_l);
 				dsp_process_fir(&fir_lpf_r, fdata_r, fdata_wf_r);
 				dsp_process_fir(&fir_hpf_r, fdata_r, fdata_tw_r);
-				dsp_pack_dac_stereo(fdata_wf_l, fdata_tw_l, (int16_t *)data_out_l);
-				dsp_pack_dac_stereo(fdata_wf_r, fdata_tw_r, (int16_t *)data_out_r);
+				
+				dsp_process_biquad(fdata_wf_l, fdata_wf_pk_l, biquad_delay_line_l, biquad_coeffs_wf_l);
+				dsp_process_biquad(fdata_wf_r, fdata_wf_pk_r, biquad_delay_line_r, biquad_coeffs_wf_r);
+				
+				dsp_pack_dac_stereo(fdata_wf_pk_l, fdata_tw_l, (int16_t *)data_out_l);
+				dsp_pack_dac_stereo(fdata_wf_pk_r, fdata_tw_r, (int16_t *)data_out_r);
 				
 				// Remove comment for play reference
 				// dsp_pack_dac_stereo(fdata_r, fdata_r, (int16_t *)data_out_r, len_bytes);
