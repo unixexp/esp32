@@ -62,7 +62,8 @@ static void i2s_task_handler(void *args) {
 	dsp_init_fir(&fir_hpf_r, fir_delay_hpf_r, active_hpf_coeffs_r, fir_hpf_table[0], FIR_TAPS);
 	dsp_init_fir(&fir_lpf_r, fir_delay_lpf_r, active_lpf_coeffs_r, fir_lpf_table[0], FIR_TAPS);
 	
-	// peak_filter_init_coeffs(44100.0f, 160.0f, 1.8f, -8.0f);
+	
+	//dsp_init_biquad(44100.0f, 160.0f, 1.8f, -8.0f, )
 	
 	// Variables to logging delta time between I2S writes
 	uint32_t dbg_iter = 0;
